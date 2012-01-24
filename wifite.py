@@ -10,6 +10,11 @@
 	 * reaver-wps - integrate
 	 * WPA - crack (aircrack/pyrit/cowpatty)
 	 
+	 * Use macchanger to randomize mac address before attack
+	   change mac back after attack.
+	 * Remember devices put into monitor mode
+	   take them out of monitor mode after attack
+	 
 """
 
 # For command-line arguments
@@ -167,7 +172,7 @@ def scan(channel=0, iface='', bssid='', first_try=True):
 	victims = []
 	print " please select one or more targets:"
 	for i, target in enumerate(targets):
-		print "   %2d) %s %3s%4sdb" % (i + 1, target.ssid.ljust(20), \
+		print "   %2d) %s %3s%4sdb" % (i + 1, target.ssid.ljust(32), \
 		          target.encryption.strip().replace("2WPA", "").ljust(4),
 	            target.power),
 		
@@ -663,6 +668,9 @@ def attack_wep(iface, target, clients):
 
 
 def main():
+	"""
+		Where the magic happens.
+	"""
 	global TARGETS_REMAINING
 	
 	iface = get_iface()
