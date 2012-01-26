@@ -13,14 +13,6 @@
 	 * Ignore OPN networks
 	 * Unknown SSID's : Send deauth's (when on fixed channel) to unmask!
 	 
-	 * Detect SIOCSIFFLAGS Unknown error 132 for RTL8187 chipsets
-	   Execute:
-rmmod rtl8187
-rfkill block all
-rfkill unblock all
-modprobe rtl8187
-ifconfig wlan1 up
-		 to get device back
 	   
 """
 
@@ -48,16 +40,30 @@ import re
 # For generating a random MAC address.
 import random
 
+################################
+# GLOBAL VARIABLES IN ALL CAPS #
+################################
+
 REVISION = 83
 
 # WPA variables
 STRIP_HANDSHAKE      = True # Use pyrit or tshark (if applicable) to strip handshake
 WPA_DEAUTH_TIMEOUT   = 10   # Time to wait between deauthentication bursts (in seconds)
 WPA_ATTACK_TIMEOUT   = 500  # Total time to allow for a handshake attack (in seconds)
-
 HANDSHAKE_DIR        = 'hs' # Directory in which handshakes .cap files are stored
 # Strip file path separator if needed
 if HANDSHAKE_DIR[-1] == os.sep: HANDSHAKE_DIR = HANDSHAKE_DIR[:-1]
+
+# WEP variables
+WEP_PPS             = 250 # 250 packets per second (Tx rate)
+WEP_ATTACK_TIMEOUT  = 600 # 10 minutes
+WEP_ARP_REPLAY      = True # Various WEP-based attacks via aireplay-ng
+WEP_CHOPCHOP        = True
+WEP_DEFRAG          = True
+WEP_P0841           = True
+WEP_CRACK_AT        = 10000 # Number of IVS at which we start cracking
+WEP_IGNORE_FAKEAUTH = True
+
 
 # Program variables
 IFACE_TO_TAKE_DOWN = '' # Interface that wifite puts into monitor mode
@@ -85,9 +91,13 @@ temp = mkdtemp(prefix='wifite')
 if not temp.endswith(os.sep):
 	temp += os.sep
 
+# /dev/null, to send output from programs so they don't print to screen.
 DN = open(os.devnull, 'w')
 
 class CapFile:
+	"""
+		Holds data about an access point's .cap file, including AP's ESSID & BSSID.
+	"""
 	def __init__(self, filename, ssid, bssid):
 		self.filename = filename
 		self.ssid = ssid
@@ -105,16 +115,6 @@ class Target:
 		self.encryption = encryption
 		self.ssid = ssid
 	
-	def __str__(self):
-		s  = 'TARGET\n'
-		s += ' BSSID=%s\n' % self.bssid
-		s += ' POWER=%s\n' % self.power
-		s += ' DATA=%s\n' % self.data
-		s += ' CHANNEL=%s\n' % self.channel
-		s += ' ENCRYPTION=%s\n' % self.encryption
-		s += ' SSID=%s\n' % self.ssid
-		return s
-
 class Client:
 	"""
 		Holds data for a Client (device connected to Access Point/Router)
@@ -123,18 +123,46 @@ class Client:
 		self.bssid   = bssid
 		self.station = station
 		self.power   = power
+
+
+def rtl8187_fix(iface):
+	"""
+		Attempts to solve "Unknown error 132" common with RTL8187 devices.
+		Puts down interface, unloads/reloads driver module, then puts iface back up.
+		Returns True if fix was attempted, False otherwise.
+	"""
 	
-	def __str__(self):
-		s  = 'CLIENT\n'
-		s += ' BSSID=%s\n' % self.bssid
-		s += ' STATION=%s\n' % self.station
-		s += ' POWER=%s\n' % self.power
-		return s
+	# Check if current interface is using the RTL8187 chipset
+	proc_airmon = Popen(['airmon-ng'], stdout=PIPE, stderr=DN)
+	proc_airmon.wait()
+	using_rtl8187 = False
+	for line in proc_airmon.communicate()[0].split():
+		line = line.upper()
+		if line.strip() == '' or line.startswith('INTERFACE'): continue
+		if line.find(iface.upper()) and line.find('RTL8187') != -1: using_rtl8187 = True
+	
+	if not using_rtl8187: 
+		# Display error message and exit
+		print R + ' unable to generate airodump-ng CSV file' + W
+		print R + ' you may want to disconnect/reconnect your wifi device' + W
+		exit_gracefully(1)
+	
+	print " Attempting RTL8187 'Unknown Error 132' fix...",
+	stdout.flush()
+	call(['rmmod', 'rtl8187'], stdout=DN, stderr=DN)
+	call(['rfkill', 'block', 'all'], stdout=DN, stderr=DN)
+	call(['rfkill', 'unblock', 'all'], stdout=DN, stderr=DN)
+	call(['modprobe', 'rtl8187'], stdout=DN, stderr=DN)
+	call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
+	print 'done'
+	return True
 
 
-def scan(channel=0, iface='', bssid=''):
+def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	"""
 		Scans for access points. Asks user to select target(s).
+			"channel" - the channel to scan on, 0 scans all channels.
+			"iface"   - the interface to scan on. must be a real interface.
 		Returns list of selected targets and list of clients.
 	"""
 	remove_airodump_files(temp + 'wifite')
@@ -145,24 +173,27 @@ def scan(channel=0, iface='', bssid=''):
 	if channel != 0:
 		command.append('-c')
 		command.append(str(channel))
-	if bssid != '':
-		command.append('--bssid')
-		command.append(bssid)
 	command.append(iface)
 	proc = Popen(command, stdout=DN, stderr=DN)
 	
-	print ' initializing scan. updates occur at 5 second intervals. CTRL+C when ready.'
+	print ' initializing scan. updates at 5 second intervals. CTRL+C when ready.'
 	(targets, clients) = ([], [])
 	try:
 		while True:
 			time.sleep(0.3)
 			if not os.path.exists(temp + 'wifite-01.csv'):
+				
+				# RTL8187 Unknown Error 132 FIX
+				if proc.poll() == None: # Check if process has finished
+					if not tried_rtl8187_fix and proc.communicate()[0].find('failed: Unknown error 132') != -1:
+						if rtl8187_fix(iface):
+							return scan(channel=channel, iface=iface, tried_rtl8187_fix=True)
 				print R + ' unable to generate airodump-ng CSV file' + W
 				print R + ' you may want to disconnect/reconnect your wifi device' + W
 				exit_gracefully(1)
 				
 			(targets, clients) = parse_csv(temp + 'wifite-01.csv')
-			print "\r scanning. %d target%s and %d client%s found" % (
+			print "\r scanning wireless networks. %d target%s and %d client%s found" % (
 			      len(targets), '' if len(targets) == 1 else 's', 
 			      len(clients), '' if len(clients) == 1 else 's'),
 			stdout.flush()	
@@ -179,23 +210,23 @@ def scan(channel=0, iface='', bssid=''):
 		exit_gracefully(1)
 	
 	# Sort by Power
-	targets = sorted(targets, key=lambda t: t.power)
+	targets = sorted(targets, key=lambda t: t.power, reverse=True)
+	
 	victims = []
-	print " below is the list of nearby encrypted access points:"
+	print "   NUM ESSID                            ENCR   POWER"
+	print '   --- -------------------------------- -----  -----'
 	for i, target in enumerate(targets):
-		if target.encryption.find('WPA') == -1 and \
-		   target.encryption.find('WEP') == -1: continue
-		print "   %2d) %s %3s%4sdb" % (i + 1, target.ssid.ljust(32), \
-		          target.encryption.strip().replace("2WPA", "").ljust(4),
-	            target.power),
-		
-		has_client = False
+		print "   %2d) %s %3s  %4ddb" % (i + 1, target.ssid.ljust(32), \
+		          target.encryption.strip().ljust(4), target.power),
+		client_text = ''
 		for c in clients:
-			if c.station == target.bssid: has_client = True
-		if has_client: print '*CLIENT*'
+			if c.station == target.bssid: 
+				if client_text == '': client_text = 'CLIENT'
+				elif client_text[-1] != "S": client_text += "S"
+		if client_text != '': print '*%s*' % client_text
 		else: print ''
 	
-	print " select target(s) numbers separated by commas (1-%s), or 'all':" % len(targets),
+	print " select target number(s) separated by commas (1-%s), or 'all':" % len(targets),
 	ri = raw_input()
 	if ri.strip().lower() == 'all':
 		victims = targets[:]
@@ -216,10 +247,10 @@ def scan(channel=0, iface='', bssid=''):
 			
 		
 	if len(victims) == 0:
-		print ' no victims selected. exiting'
+		print ' no targets selected. exiting'
 		exit_gracefully(0)
 	
-	print ' %d victim%s selected.' % (len(victims), '' if len(victims) == 1 else 's')
+	print ' %d target%s selected.' % (len(victims), '' if len(victims) == 1 else 's')
 	
 	return (victims, clients)
 
@@ -246,8 +277,11 @@ def parse_csv(filename):
 			ssid = c[cur+1]
 			ssidlen = int(c[cur])
 			ssid = ssid[:ssidlen]
-			t = Target(c[0], c[cur-4], c[cur-2].strip(), c[3], c[5], ssid)
-			if c[5].find('OPN') != -1: continue # Ignore "open" networks.
+			power = int(c[cur-4])
+			if power < 0: power += 100
+			t = Target(c[0], power, c[cur-2].strip(), c[3], c[5].replace("2WPA", ""), ssid)
+			# Ignore non-WPA/WEP networks.
+			if c[5].find('WPA') == -1 and c[5].find('WEP') == -1: continue
 			targets.append(t)
 		else: # Connected clients
 			c = line.split(', ')
@@ -347,6 +381,9 @@ def get_iface():
 	
 
 def get_input(start=1, stop=1, message=''):
+	"""
+		Returns input from user.
+	"""
 	if message == '': message = ' enter a number between %s and %s:' % (start, stop)
 	i = -1
 	while i < start or i > stop:
@@ -368,7 +405,8 @@ def handle_args():
 	"""
 	args = argv[1:]
 	# TODO allow user to set global variables
-	# print " arguments: %s" % str(args)
+	for i in xrange(0, len(args)):
+		print "%d='%s'" % (i, args[i])
 
 
 def has_handshake(target, capfile):
@@ -524,10 +562,11 @@ def program_exists(program):
 	proc = Popen(['which', program], stdout=PIPE)
 	return proc.communicate()[0].strip() != ''
 
+
 def strip_handshake(capfile):
 	"""
 		Uses Tshark or Pyrit to strip all non-handshake packets from a .cap file
-		File in location 'capfile' is overwritten.
+		File in location 'capfile' is overwritten!
 	"""
 	output_file = capfile
 	if program_exists('pyrit'):
@@ -726,8 +765,9 @@ def attack_wpa(iface, target, clients):
 
 def attack_wep(iface, target, clients):
 	"""
-		
+		Attacks WEP-encrypted network.
 	"""
+	
 	pass
 
 
