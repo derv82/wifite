@@ -10,11 +10,18 @@
 	 * reaver-wps - integrate
 	 * WPA - crack (aircrack/pyrit/cowpatty)
 	 
-	 * Use macchanger to randomize mac address before attack
-	   change mac back after attack.
-	 * Remember devices put into monitor mode
-	   take them out of monitor mode after attack
+	 * Ignore OPN networks
+	 * Unknown SSID's : Send deauth's (when on fixed channel) to unmask!
 	 
+	 * Detect SIOCSIFFLAGS Unknown error 132 for RTL8187 chipsets
+	   Execute:
+rmmod rtl8187
+rfkill block all
+rfkill unblock all
+modprobe rtl8187
+ifconfig wlan1 up
+		 to get device back
+	   
 """
 
 # For command-line arguments
@@ -37,6 +44,9 @@ import time
 
 # regular expressions - for converting SSID to filename
 import re
+
+# For generating a random MAC address.
+import random
 
 REVISION = 83
 
@@ -255,6 +265,7 @@ def enable_monitor_mode(iface):
 		Uses airmon-ng to put a device into Monitor Mode.
 		Then uses the get_iface() method to retrieve the new interface's name.
 		Sets global variable IFACE_TO_TAKE_DOWN as well.
+		Returns the name of the interface in monitor mode.
 	"""
 	global IFACE_TO_TAKE_DOWN
 	print ' putting %s into monitor mode...' % (iface),
@@ -281,9 +292,9 @@ def get_iface():
 		Get the wireless interface in monitor mode. 
 		Defaults to only device in monitor mode if found.
 		Otherwise, enumerates list of possible wifi devices
-		and asks user to select one to put into monitor mode.
+		and asks user to select one to put into monitor mode (if multiple).
 		Uses airmon-ng to put device in monitor mode if needed.
-		Returns the name (String) of the interface chosen in monitor mode.
+		Returns the name (string) of the interface chosen in monitor mode.
 	"""
 	proc  = Popen(['iwconfig'], stdout=PIPE, stderr=DN)
 	iface = ''
@@ -364,7 +375,6 @@ def has_handshake(target, capfile):
 		Returns True if handshake is found, False otherwise.
 	"""
 	
-	
 	if program_exists('tshark'):
 		# Call Tshark to return list of EAPOL packets in cap file.
 		cmd = ['tshark',
@@ -434,7 +444,7 @@ def has_handshake(target, capfile):
 		return False
 	
 	# Use CowPatty to check for handshake.
-	if program_exists('cowpatty'):
+	elif program_exists('cowpatty'):
 		# Call cowpatty to check if capfile contains a valid handshake.
 		cmd = ['cowpatty',
 		       '-r', capfile,     # input file
@@ -769,33 +779,49 @@ def main():
 	exit_gracefully(0)
 
 
+def generate_random_mac(old_mac):
+	"""
+		Generates a random MAC address.
+		Keeps the same vender (first 6 chars) of the old MAC address (old_mac).
+		Returns string in format old_mac[0:9] + :XX:XX:XX where X is random hex
+	"""
+	random.seed()
+	new_mac = old_mac[:8].lower().replace('-', ':')
+	for i in xrange(0, 6):
+		if i % 2 == 0: new_mac += ':'
+		new_mac += '0123456789abcdef'[random.randint(0,15)]
+	
+	# Prevent generating the same MAC address via recursion.
+	if new_mac == old_mac:
+		new_mac = generate_random_mac(old_mac)
+	return new_mac
+
 def mac_anonymize(iface):
 	"""
-		Changes MAC address of 'iface' to a random as designated by "macchanger"
-		Uses -a switch so only last 6 hex chars are changed (vendor stays the same)
+		Changes MAC address of 'iface' to a random MAC.
+		Only randomizes the last 6 digits of the MAC, so the vender says the same.
 		Stores old MAC address and the interface in ORIGINAL_IFACE_MAC
 	"""
 	global ORIGINAL_IFACE_MAC
 	if DO_NOT_CHANGE_MAC: return
-	if not program_exists('macchanger'): return
+	if not program_exists('ifconfig'): return
 	
 	# Store old (current) MAC address
-	proc = Popen(['macchanger', '-s', iface], stdout=PIPE, stderr=DN)
+	proc = Popen(['ifconfig', iface], stdout=PIPE, stderr=DN)
 	proc.wait()
-	old_mac = proc.communicate()[0].split(' ')[2]
+	for word in proc.communicate()[0].split('\n')[0].split(' '):
+		if word != '': old_mac = word
 	ORIGINAL_IFACE_MAC = (iface, old_mac)
+	
+	new_mac = generate_random_mac(old_mac)
 	
 	call(['ifconfig', iface, 'down'])
 	
-	print " changing %s's MAC from %s to" % (iface, old_mac),
-	# Change to new anonymous MAC address
-	proc = Popen(['macchanger', '-a', iface], stdout=PIPE, stderr=DN)
-	proc.wait()
-	result = proc.communicate()[0]
-	result = result.split('\n')[1].replace('   ', ' ')
-	new_mac = result.split(' ')[2]
-	print "%s..." % new_mac,
+	print " changing %s's MAC from %s to %s..." % (iface, old_mac, new_mac),
 	stdout.flush()
+	
+	proc = Popen(['ifconfig', iface, 'hw', 'ether', new_mac], stdout=PIPE, stderr=DN)
+	proc.wait()
 	call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
 	print 'done'
 
