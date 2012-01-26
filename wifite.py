@@ -79,7 +79,7 @@ C  = "\033[36m" # cyan
 GR = "\033[37m" # gray
 
 
-# Create temporary directory (temp)
+# Create temporary directory
 from tempfile import mkdtemp
 temp = mkdtemp(prefix='wifite')
 if not temp.endswith(os.sep):
@@ -151,7 +151,7 @@ def scan(channel=0, iface='', bssid=''):
 	command.append(iface)
 	proc = Popen(command, stdout=DN, stderr=DN)
 	
-	print ' initializing scan. updates occur at 5 second intervals. Ctrl+C when ready.'
+	print ' initializing scan. updates occur at 5 second intervals. CTRL+C when ready.'
 	(targets, clients) = ([], [])
 	try:
 		while True:
@@ -174,16 +174,17 @@ def scan(channel=0, iface='', bssid=''):
 	print ''
 	
 	if len(targets) == 0:
-		print R + ' no targets found!'
-		print ' you may need to wait for targets to show up.'
-		print ' the program will now exit.'
+		print R + ' no targets found!' + W
+		print R + ' you may need to wait for targets to show up.' + W
 		exit_gracefully(1)
 	
 	# Sort by Power
 	targets = sorted(targets, key=lambda t: t.power)
 	victims = []
-	print " please select one or more targets:"
+	print " below is the list of nearby encrypted access points:"
 	for i, target in enumerate(targets):
+		if target.encryption.find('WPA') == -1 and \
+		   target.encryption.find('WEP') == -1: continue
 		print "   %2d) %s %3s%4sdb" % (i + 1, target.ssid.ljust(32), \
 		          target.encryption.strip().replace("2WPA", "").ljust(4),
 	            target.power),
@@ -194,7 +195,7 @@ def scan(channel=0, iface='', bssid=''):
 		if has_client: print '*CLIENT*'
 		else: print ''
 	
-	print " select target, multiple separated by commas (1-%s), or 'all':" % len(targets),
+	print " select target(s) numbers separated by commas (1-%s), or 'all':" % len(targets),
 	ri = raw_input()
 	if ri.strip().lower() == 'all':
 		victims = targets[:]
@@ -268,7 +269,7 @@ def enable_monitor_mode(iface):
 		Returns the name of the interface in monitor mode.
 	"""
 	global IFACE_TO_TAKE_DOWN
-	print ' putting %s into monitor mode...' % (iface),
+	print ' enabling monitor mode on %s...' % (iface),
 	stdout.flush()
 	call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
 	print 'done'
@@ -282,9 +283,10 @@ def disable_monitor_mode():
 		We want to disable this before we exit, so we will do that.
 	"""
 	if IFACE_TO_TAKE_DOWN == '': return
+	print ' disabling monitor mode on %s...' % (IFACE_TO_TAKE_DOWN),
+	stdout.flush()
 	call(['airmon-ng', 'stop', IFACE_TO_TAKE_DOWN], stdout=DN, stderr=DN)
-	print ' disabled monitor mode on %s' % IFACE_TO_TAKE_DOWN
-
+	print 'done'
 
 
 def get_iface():
@@ -745,7 +747,7 @@ def main():
 	TARGETS_REMAINING = len(targets)
 	for t in targets:
 		TARGETS_REMAINING -= 1
-		print "TARGET: %s (%s)" % (t.ssid, t.bssid)
+		print ' targetting "%s" (%s)' % (t.ssid, t.bssid)
 		
 		# Build list of clients connected to target
 		ts_clients = []
@@ -826,19 +828,20 @@ def mac_anonymize(iface):
 	print 'done'
 
 def mac_change_back():
+	"""
+		Changes MAC address back to what it was before attacks began.
+	"""
 	iface = ORIGINAL_IFACE_MAC[0]
 	old_mac = ORIGINAL_IFACE_MAC[1]
 	if iface == '' or old_mac == '': return
 	
 	print " changing mac back to %s..." % old_mac,
 	stdout.flush()
+	
 	call(['ifconfig', iface, 'down'], stdout=DN, stderr=DN)
-	proc = Popen(['macchanger', '-m', old_mac, iface], stdout=PIPE, stderr=DN)
+	proc = Popen(['ifconfig', iface, 'hw', 'ether', old_mac], stdout=PIPE, stderr=DN)
 	proc.wait()
-	result = proc.communicate()[0]
 	call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
-	result = result.split('\n')[1].replace('   ', ' ')
-	result = result.split(' ')[2]
 	print "done"
 
 def exit_gracefully(code):
@@ -855,6 +858,7 @@ def exit_gracefully(code):
 	disable_monitor_mode()
 	# Change MAC address back if spoofed
 	mac_change_back()
+	print " the program will now exit"
 	# GTFO
 	exit(code)
 
