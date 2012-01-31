@@ -450,11 +450,13 @@ def parse_csv(filename):
 			if power < 0: power += 100
 			
 			enc = c[5]
+			# Ignore non-WPA/WEP networks.
 			if enc.find('WPA') == -1 and enc.find('WEP') == -1: continue
+			if WEP_DISABLE and enc.find('WEP') != -1: continue
+			if WPA_DISABLE and WPS_DISABLE and enc.find('WPA') != -1: continue
 			enc = enc.strip()[:4]
 			
 			t = Target(c[0], power, c[cur-2].strip(), c[3], enc, ssid)
-			# Ignore non-WPA/WEP networks.
 			targets.append(t)
 		else: # Connected clients
 			c = line.split(', ')
@@ -573,24 +575,30 @@ def handle_args():
 	global WPA_HANDSHAKE_AIRCRACK, WPA_HANDSHAIR_COWPATTY
 	global WEP_DISABLE, WEP_PPS, WEP_TIMEOUT, WEP_ARP_REPLAY, WEP_CHOPCHOP, WEP_FRAGMENT
 	global WEP_CAFFELATTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
-	
+	global WPS_DISABLE
+
 	set_encrypt = False
+	set_hscheck = False
+	set_wep     = False
 	args = argv[1:]
 	# TODO allow user to set global variables
 	for i in xrange(0, len(args)):
+
 		if not set_encrypt and (args[i] == '-wpa' or args[i] == '-wep' or args[i] == 'wps'):
 			WPS_DISABLE = True
 			WPA_DISABLE = True
 			WEP_DISABLE = True
 			set_encrypt = True
-		
 		if   args[i] == '-wpa': WPA_DISABLE = False
-		elif args[i] == '-wep': WEP_DISABLE = False
+		elif args[i] == '-wep': 
+			print GR+' [+]'+W+' scanning for '+G+'WEP'+W+' encrypted networks'
+			WEP_DISABLE = False
 		elif args[i] == '-wps': WEP_DISABLE = False
 		
 		if args[i] == '-c':
-			try: TARGET_CHANNEL = int(args[i+1])
-			except ValueError: print O+' [!]'+R+' invalid channel: '+O+args[i+1]+W
+			i += 1
+			try: TARGET_CHANNEL = int(args[i])
+			except ValueError: print O+' [!]'+R+' invalid channel: '+O+args[i]+W
 			except IndexError: print O+' [!]'+R+' no channel given!'+W
 		if args[i] == '-mac':
 			DO_NOT_CHANGE_MAC = False
@@ -599,10 +607,51 @@ def handle_args():
 			WIRELESS_IFACE = args[i]
 			print GR+' [!]'+W+' set interface: %s' % (G+args[i]+W)
 
+		# WPA
+		if not set_hscheck and (args[i] == '-tshark' or args[i] == '-cowpatty' or args[i] == '-aircrack' or args[i] == 'pyrit'):
+			WPA_HANDSHAKE_TSHARK   = False
+			WPA_HANDSHAKE_PYRIT    = False
+			WPA_HANDSHAKE_COWPATTY = False
+			WPA_HANDSHAKE_AIRCRACK = False
+			set_hscheck = True
+		if args[i] == '-strip':
+			WPA_STRIP_HANDSHAKE = True
+			print GR+' [+]'+W+' handshake stripping '+G+'enabled'+W
+		if args[i] == '-wpadt':
+			i += 1
+			WPA_DEAUTH_TIMEOUT = int(args[i])
+			print GR+' [+]'+W+' WPA deauth timeout set to '+G+'%s seconds'+W % (args[i])
+		if args[i] == '-wpat':
+			i += 1
+			WPA_ATTACK_TIMEOUT = int(args[i])
+			print GR+' [+]'+W+' WPA attack timeout set to '+G+'%s seconds'+W % (args[i])
+		if args[i] == '-crack':
+			WPA_DONT_CRACK = False
+			print GR+' [+]'+W+' WPA cracking '+G+'enabled'+W
+		if args[i] == '-tshark':
+			WPA_HANDSHAKE_TSHARK = True
+			print GR+' [+]'+W+' tshark handshake verification '+G+'enabled'+W
+		if args[i] == '-pyrit':
+			WPA_HANDSHAKE_PYRIT = True
+			print GR+' [+]'+W+' pyrit handshake verification '+G+'enabled'+W
+		if args[i] == '-aircrack':
+			WPA_HANDSHAKE_AIRCRACK = True
+			print GR+' [+]'+W+' aircrack handshake verification '+G+'enabled'+W
+		if args[i] == '-cowpatty':
+			WPA_HANDSHAKE_COWPATTY = True
+			print GR+' [+]'+W+' cowpatty handshake verification '+G+'enabled'+W
 
-
-
-
+		# WEP
+		if not set_wep and args[i] == '-chopchop' or args[i] == 'fragment' or args[i] == 'caffelatte' or args[i] == '-arpreplay':
+			WEP_CHOPCHOP   = False
+			WEP_ARPREPLAY  = False
+			WEP_CAFFELATTE = False
+			WEP_FRAGMENT   = False
+		if args[i] == '-chopchop': WEP_CHOPCHOP = True
+		if args[i] == '-fragment': WEP_FRAGMENT = True
+		if args[i] == '-caffelatte': WEP_CAFFELATTE = True
+		if args[i] == '-arpreplay': WEP_ARPREPLAY = True
+		if args[i] == '-nofake': WEP_IGNORE_FAKEAUTH = False
 
 def has_handshake(target, capfile):
 	"""
