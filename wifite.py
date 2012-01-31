@@ -122,6 +122,16 @@ C  = '\033[36m' # cyan
 GR = '\033[37m' # gray
 
 
+if os.getuid() != 0:
+	print O+' [!]'+R+' ERROR:'+G+' wifite'+W+' must be run as '+O+'root'+W
+	print O+' [!]'+W+' login as root or try "sudo ./wifite.py"'
+	exit(1)
+
+if not os.uname()[0].startswith("Linux"):
+	O+' [!]'+R+' WARNING:'+G+' wifite'+W+' must be run via '+O+'linux'+W
+	exit(1)
+
+
 # Create temporary directory to work in
 from tempfile import mkdtemp
 temp = mkdtemp(prefix='wifite')
@@ -1315,6 +1325,7 @@ def get_mac_address(iface):
 	"""
 		Returns MAC address of "iface".
 	"""
+	print ' '.join(['ifconfig', iface])
 	proc = Popen(['ifconfig', iface], stdout=PIPE, stderr=DN)
 	proc.wait()
 	mac = ''
