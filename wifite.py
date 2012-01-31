@@ -1,13 +1,13 @@
 #!/usr/bin/python
 
+# -*- coding: utf-8 -*-
+
 """
 	wifite
 	
 	author: derv82 at gmail
 	
 	TODO:
-	 * rtl8187 fix needs to take iface out of monitor mode!
-	 
 	 * Command line arguments. Seriously.
 	 
 	 * WEP - ability to pause/skip/continue	 
@@ -16,7 +16,7 @@
 	 
 	 * Option to "analyze" or "check" cap files for handshakes.
 	   Shows output from other programs like tshark, cowpatty, pyrit, aircrack.
-	   
+	 
 	 * reaver:
 	 	 MONITOR ACTIVITY!
 	   - Ensure WPS key attempts have begun. 
@@ -75,10 +75,11 @@ WPA_DICTIONARY       = 'phpbb.txt' # '/pentest/web/wfuzz/wordlist/fuzzdb/wordlis
 if not os.path.exists(WPA_DICTIONARY): WPA_DICTIONARY = ''
 # Various programs to use when checking for a four-way handshake.
 # True means the program must find a valid handshake in order for wifite to recognize a handshake.
-WPA_HANDSHAKE_TSHARK   = False #True # Checks for sequential 1/4, 2/4, 3/4 EAPOL packets (ignores 4th)
-WPA_HANDSHAKE_PYRIT    = True #True # Sometimes crashes on incomplete dumps, but accurate.
+# Not finding handshake short circuits result (ALL 'True' programs must find handshake)
+WPA_HANDSHAKE_TSHARK   = False # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
+WPA_HANDSHAKE_PYRIT    = False # Sometimes crashes on incomplete dumps, but accurate.
 WPA_HANDSHAKE_AIRCRACK = True  # Not 100% accurate, but fast.
-WPA_HANDSHAKE_COWPATTY = False #True # Uses more lenient "nonstrict mode" (-2)
+WPA_HANDSHAKE_COWPATTY = True  # Uses more lenient "nonstrict mode" (-2)
 
 
 
@@ -91,17 +92,21 @@ WEP_CHOPCHOP        = False #True
 WEP_FRAGMENT        = False #True
 WEP_CAFFELATTE      = False #True
 WEP_CRACK_AT_IVS    = 10000 # Number of IVS at which we start cracking
-WEP_IGNORE_FAKEAUTH = True
+WEP_IGNORE_FAKEAUTH = True  # When True, continues attack despite fake authentication failure
 WEP_FINDINGS        = [] # List of strings containing info on successful WEP attacks.
 
 
 # WPS variables
 WPS_DISABLE         = False # Flag to skip WPS scan and attacks
-WPS_FINDINGS        = []
-WPS_STOP_IF_FAIL    = True # 
+WPS_FINDINGS        = []    # List of (successful) results of WPS attacks
+WPS_STOP_IF_FAIL    = True  # If unable to try ANY PINS after WPS_TIMEOUT, stop attack
+WPS_TIMEOUT         = 120   # Time to wait (in seconds) for successful PIN attempt
+
 
 # Program variables
 WIRELESS_IFACE     = '' # User-defined interface
+TARGET_CHANNEL     = 0  # User-defined channel to scan on
+TARGET_ESSID       = '' # User-defined ESSID of specific target to attack
 IFACE_TO_TAKE_DOWN = '' # Interface that wifite puts into monitor mode
                         # It's our job to put it out of monitor mode after the attacks
 ORIGINAL_IFACE_MAC = ('', '') # Original interface name[0] and MAC address[1] (before spoofing)
@@ -259,11 +264,17 @@ def wps_check_targets(targets, cap_file):
 		Uses reaver's "walsh" program to check access points in cap_file
 		for WPS functionality. Sets "wps" field of targets that match to True.
 	"""
-	if not program_exists('walsh'): return
+	global WPS_DISABLE
+	
+	if not program_exists('walsh') and not program_exists('wash'):
+		WPS_DISABLE = True # Tell 'scan' we were unable to execute walsh
+		return
+	program_name = 'walsh' if program_exists('walsh') else 'wash'
+	
 	if len(targets) == 0 or not os.path.exists(cap_file): return
 	print ' [+] checking for '+G+'WPS compatibility'+W+'...',
 	
-	cmd = ['walsh',
+	cmd = [program_name,
 	       '-f', cap_file,
 	       '-C'] # ignore Frame Check Sum errors
 	proc_walsh = Popen(cmd, stdout=PIPE, stderr=DN)
@@ -363,7 +374,10 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 		elif target.power >= 40: print O,
 		else:                    print R,
 		print "%3ddb%s" % (target.power, W),
-		print "  %3s" % (G+'wps'+W if target.wps else '   '),
+		if WPS_DISABLE:
+			print "  %3s" % (O+'n/a'+W),
+		else:
+			print "  %3s" % (G+'wps'+W if target.wps else R+' no'+W),
 		client_text = ''
 		for c in clients:
 			if c.station == target.bssid: 
@@ -387,7 +401,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 					for v in xrange(x, y):
 						victims.append(targets[v - 1])
 			elif not r.isdigit() and r.strip() != '':
-				print R+" [!]"+O+" not a number: %s " % (O+r+W)
+				print O+" [!]"+R+" not a number: %s " % (O+r+W)
 			else:
 				victims.append(targets[int(r) - 1])
 		
@@ -399,6 +413,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	print ' [+] %s%d%s target%s selected.' % (G, len(victims), W, '' if len(victims) == 1 else 's')
 	
 	return (victims, clients)
+
 
 def parse_csv(filename):
 	"""
@@ -546,24 +561,32 @@ def handle_args():
 	"""
 		Handles command-line arguments, sets variables.
 	"""
-	global WIRELESS_IFACE, DO_NOT_CHANGE_MAC
+	global WIRELESS_IFACE, TARGET_CHANNEL, DO_NOT_CHANGE_MAC
 	global WPA_DISABLE, WPA_STRIP_HANDSHAKE, WPA_DEAUTH_TIMEOUT, WPA_ATTACK_TIMEOUT
 	global WPA_DONT_CRACK, WPA_DICTIONARY, WPA_HANDSHAKE_TSHARK, WPA_HANDSHAKE_PYRIT
 	global WPA_HANDSHAKE_AIRCRACK, WPA_HANDSHAIR_COWPATTY
 	global WEP_DISABLE, WEP_PPS, WEP_TIMEOUT, WEP_ARP_REPLAY, WEP_CHOPCHOP, WEP_FRAGMENT
 	global WEP_CAFFELATTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
-
-	set_encryption = False
+	
+	set_encrypt = False
 	args = argv[1:]
 	# TODO allow user to set global variables
 	for i in xrange(0, len(args)):
-		if not set_encrytption and (args[i] == '-wpa' or args[i] == '-wep' or args[i] == 'wps'):
+		if not set_encrypt and (args[i] == '-wpa' or args[i] == '-wep' or args[i] == 'wps'):
 			WPS_DISABLE = True
 			WPA_DISABLE = True
 			WEP_DISABLE = True
-			set_encryption = True
+			set_encrypt = True
 		
-		print "%d='%s'" % (i, args[i])
+		if   args[i] == '-wpa': WPA_DISABLE = False
+		elif args[i] == '-wep': WEP_DISABLE = False
+		elif args[i] == '-wps': WEP_DISABLE = False
+		
+		if args[i] == '-c':
+			try: TARGET_CHANNEL = int(args[i+1])
+			except ValueError: print O+' [!]'+R+' invalid channel: '+O+args[i+1]+W
+			except IndexError: print O+' [!]'+R+' no channel given!'+W
+		
 
 
 def has_handshake(target, capfile):
@@ -1324,13 +1347,15 @@ def main():
 	"""
 	global TARGETS_REMAINING, THIS_MAC
 	
+	handle_args()
+	
 	# The "get_iface" method anonymizes the MAC address (if needed)
 	# and puts the interface into monitor mode.
 	iface = get_iface()
 	
 	THIS_MAC = get_mac_address(iface) # Store current MAC address
 	
-	(targets, clients) = scan(iface=iface)
+	(targets, clients) = scan(iface=iface, channel=TARGET_CHANNEL)
 	
 	try:
 		# Check if handshakes already exist, ask user whether to skip targets or save new handshakes
@@ -1677,7 +1702,6 @@ def exit_gracefully(code):
 
 if __name__ == '__main__':
 	try:
-		handle_args()
 		main()
 	except KeyboardInterrupt:
 		print R+'\n (^C)'+O+' interrupted\n'+W
