@@ -88,10 +88,10 @@ WPA_HANDSHAKE_COWPATTY = True  # Uses more lenient "nonstrict mode" (-2)
 WEP_DISABLE         = False # Flag for ignoring WEP networks
 WEP_PPS             = 600   # packets per second (Tx rate)
 WEP_TIMEOUT         = 600   # Amount of time to give each attack
-WEP_ARP_REPLAY      = False # Various WEP-based attacks via aireplay-ng
-WEP_CHOPCHOP        = True #True
-WEP_FRAGMENT        = False #True
-WEP_CAFFELATTE      = False #True
+WEP_ARP_REPLAY      = True  # Various WEP-based attacks via aireplay-ng
+WEP_CHOPCHOP        = True  #
+WEP_FRAGMENT        = True  #
+WEP_CAFFELATTE      = True  #
 WEP_CRACK_AT_IVS    = 10000 # Number of IVS at which we start cracking
 WEP_IGNORE_FAKEAUTH = True  # When True, continues attack despite fake authentication failure
 WEP_FINDINGS        = []    # List of strings containing info on successful WEP attacks.
@@ -289,8 +289,16 @@ def wps_check_targets(targets, cap_file):
 		for t in targets:
 			if t.bssid.lower() == bssid.lower():
 				t.wps = True
-	
 	print 'done'
+	removed = 0
+	if not WPS_DISABLE and WPA_DISABLE:
+		i = 0
+		while i < len(targets):
+			if not targets[i].wps and targets[i].encryption.find('WPA') != -1:
+				removed += 1
+				targets.pop(i)
+			else: i += 1
+		if removed > 0: print GR+' [+]'+O+' removed %d non-WPS-enabled targets%s' % (removed, W)
 
 
 def scan(channel=0, iface='', tried_rtl8187_fix=False):
@@ -332,6 +340,16 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 				exit_gracefully(1)
 				
 			(targets, clients) = parse_csv(temp + 'wifite-01.csv')
+			
+			if TARGET_ESSID != '':
+				for t in targets:
+					if t.ssid.lower() == TARGET_ESSID.lower():
+						send_interrupt(proc)
+						try: os.kill(proc.pid, SIGTERM)
+						except OSError: pass
+						except UnboundLocalError: pass
+						return ([t],clients)
+
 			print ' %s %s wireless networks. %s target%s and %s client%s found   \r' % (
 			      sec_to_hms(time.time() - time_started), G+'scanning'+W, 
 			      G+str(len(targets))+W, '' if len(targets) == 1 else 's', 
@@ -565,93 +583,170 @@ def get_iface():
 	return enable_monitor_mode(monitor)
 	
 
+def help():
+	print G+'\n wifite'+W+' help\n'
+
+	print ' general'
+	print '\t-i <iface>  \tuse interface for capture [auto]'
+	print '\t-c <chan>   \tchannel to scan for targets on [auto]'
+	print '\t-e <essid>  \ttarget a specific access point by ssid (name) [ask]'
+	print '\t-check <file>\tcheck capfile <file> for handshakes. prints results'
+	print '\n WPA'
+	print '\t-wpa        \tonly target WPA networks (works with -wps -wep) [off]'
+	print '\t-wpat <s>   \ttime to wait for WPA attack to complete (seconds) [300]'
+	print '\t-wpadt <s>  \ttime to wait between sending deauth packets (seconds) [10]'
+	print '\t-strip      \tstrip handshake using tshark or pyrit [off]'
+	print '\t-crack <dic>\tcrack WPA handshakes using <dic> wordlist file [off]'
+	
+	print '\nWPA handshake options (can combine)'
+	print '\t-aircrack   \tverify handshake using aircrack [on]'
+	print '\t-pyrit      \tverify handshake using pyrit [on]'
+	print '\t-tshark     \tverify handshake using tshark [off]'
+	print '\t-cowpatty   \tverify handshake using cowpatty [off]'
+	
+	print '\nWEP'
+	print '\t-wep        \tonly target WEP networks (works with -wpa and -wps) [off]'
+	print '\t-pps <num>  \tset the number of packets per second to inject [600]'
+	print '\t-weptime <s>\ttime to wait for *each* WEP attack to complete (sec) [600]'
+	print '\t-chopchop   \tuse chopchop attack [on]'
+	print '\t-arpreplay  \tuse arpreplay attack [on]'
+	print '\t-fragment   \tuse fragmentation attack [on]'
+	print '\t-caffelatte \tuse caffe-latte attack [on]'
+	print '\t-nofakeauth \tstop attack if fake authentication fails [off]'
+	print '\t-wepca <n>  \tstart cracking when number of ivs is greater than n [10000]'
+
+
+
 def handle_args():
 	"""
 		Handles command-line arguments, sets variables.
 	"""
-	global WIRELESS_IFACE, TARGET_CHANNEL, DO_NOT_CHANGE_MAC
+	global WIRELESS_IFACE, TARGET_CHANNEL, DO_NOT_CHANGE_MAC, TARGET_ESSID
 	global WPA_DISABLE, WPA_STRIP_HANDSHAKE, WPA_DEAUTH_TIMEOUT, WPA_ATTACK_TIMEOUT
 	global WPA_DONT_CRACK, WPA_DICTIONARY, WPA_HANDSHAKE_TSHARK, WPA_HANDSHAKE_PYRIT
-	global WPA_HANDSHAKE_AIRCRACK, WPA_HANDSHAIR_COWPATTY
+	global WPA_HANDSHAKE_AIRCRACK, WPA_HANDSHAKE_COWPATTY
 	global WEP_DISABLE, WEP_PPS, WEP_TIMEOUT, WEP_ARP_REPLAY, WEP_CHOPCHOP, WEP_FRAGMENT
 	global WEP_CAFFELATTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
 	global WPS_DISABLE
 
+	args = argv[1:]
+	if args.count('-h') + args.count('--help') + args.count('?') + args.count('-help') > 0:
+		help()
+		gracefully_exit(0)
+	
 	set_encrypt = False
 	set_hscheck = False
 	set_wep     = False
-	args = argv[1:]
 	# TODO allow user to set global variables
-	for i in xrange(0, len(args)):
+	try:
+		for i in xrange(0, len(args)):
 
-		if not set_encrypt and (args[i] == '-wpa' or args[i] == '-wep' or args[i] == 'wps'):
-			WPS_DISABLE = True
-			WPA_DISABLE = True
-			WEP_DISABLE = True
-			set_encrypt = True
-		if   args[i] == '-wpa': WPA_DISABLE = False
-		elif args[i] == '-wep': 
-			print GR+' [+]'+W+' scanning for '+G+'WEP'+W+' encrypted networks'
-			WEP_DISABLE = False
-		elif args[i] == '-wps': WEP_DISABLE = False
-		
-		if args[i] == '-c':
-			i += 1
-			try: TARGET_CHANNEL = int(args[i])
-			except ValueError: print O+' [!]'+R+' invalid channel: '+O+args[i]+W
-			except IndexError: print O+' [!]'+R+' no channel given!'+W
-		if args[i] == '-mac':
-			DO_NOT_CHANGE_MAC = False
-		if args[i] == '-i':
-			i += 1
-			WIRELESS_IFACE = args[i]
-			print GR+' [!]'+W+' set interface: %s' % (G+args[i]+W)
+			if not set_encrypt and (args[i] == '-wpa' or args[i] == '-wep' or args[i] == '-wps'):
+				WPS_DISABLE = True
+				WPA_DISABLE = True
+				WEP_DISABLE = True
+				set_encrypt = True
+			if   args[i] == '-wpa': 
+				print GR+' [+]'+W+' scanning for '+G+'WPA'+W+' encrypted networks (use '+G+'-wps'+W+' for WPS scan)'
+				WPA_DISABLE = False
+			elif args[i] == '-wep': 
+				print GR+' [+]'+W+' scanning for '+G+'WEP'+W+' encrypted networks'
+				WEP_DISABLE = False
+			elif args[i] == '-wps': 
+				print GR+' [+]'+W+' scanning for '+G+'WPS-enabled'+W+' networks'
+				WPS_DISABLE = False
+			
+			elif args[i] == '-c':
+				i += 1
+				try: TARGET_CHANNEL = int(args[i])
+				except ValueError: print O+' [!]'+R+' invalid channel: '+O+args[i]+W
+				except IndexError: print O+' [!]'+R+' no channel given!'+W
+				else: print GR+' [+]'+W+' channel set to %s' % (G+args[i]+W)
+			elif args[i] == '-mac':
+				print GR+' [+]'+W+' mac changing '+G+'enabled'+W
+				print O+'     note: only works if device is not in monitor mode!'+W
+				DO_NOT_CHANGE_MAC = False
+			elif args[i] == '-i':
+				i += 1
+				WIRELESS_IFACE = args[i]
+				print GR+' [+]'+W+' set interface: %s' % (G+args[i]+W)
+			elif args[i] == '-e':
+				i += 1
+				try: TARGET_ESSID = args[i]
+				except ValueError: print R+' [!]'+O+' no ESSID given!'+W
+				else: print GR+' [+]'+W+' targetting ESSID "%s"' % (G+args[i]+W)
 
-		# WPA
-		if not set_hscheck and (args[i] == '-tshark' or args[i] == '-cowpatty' or args[i] == '-aircrack' or args[i] == 'pyrit'):
-			WPA_HANDSHAKE_TSHARK   = False
-			WPA_HANDSHAKE_PYRIT    = False
-			WPA_HANDSHAKE_COWPATTY = False
-			WPA_HANDSHAKE_AIRCRACK = False
-			set_hscheck = True
-		if args[i] == '-strip':
-			WPA_STRIP_HANDSHAKE = True
-			print GR+' [+]'+W+' handshake stripping '+G+'enabled'+W
-		if args[i] == '-wpadt':
-			i += 1
-			WPA_DEAUTH_TIMEOUT = int(args[i])
-			print GR+' [+]'+W+' WPA deauth timeout set to '+G+'%s seconds'+W % (args[i])
-		if args[i] == '-wpat':
-			i += 1
-			WPA_ATTACK_TIMEOUT = int(args[i])
-			print GR+' [+]'+W+' WPA attack timeout set to '+G+'%s seconds'+W % (args[i])
-		if args[i] == '-crack':
-			WPA_DONT_CRACK = False
-			print GR+' [+]'+W+' WPA cracking '+G+'enabled'+W
-		if args[i] == '-tshark':
-			WPA_HANDSHAKE_TSHARK = True
-			print GR+' [+]'+W+' tshark handshake verification '+G+'enabled'+W
-		if args[i] == '-pyrit':
-			WPA_HANDSHAKE_PYRIT = True
-			print GR+' [+]'+W+' pyrit handshake verification '+G+'enabled'+W
-		if args[i] == '-aircrack':
-			WPA_HANDSHAKE_AIRCRACK = True
-			print GR+' [+]'+W+' aircrack handshake verification '+G+'enabled'+W
-		if args[i] == '-cowpatty':
-			WPA_HANDSHAKE_COWPATTY = True
-			print GR+' [+]'+W+' cowpatty handshake verification '+G+'enabled'+W
+			# WPA
+			if not set_hscheck and (args[i] == '-tshark' or args[i] == '-cowpatty' or args[i] == '-aircrack' or args[i] == 'pyrit'):
+				WPA_HANDSHAKE_TSHARK   = False
+				WPA_HANDSHAKE_PYRIT    = False
+				WPA_HANDSHAKE_COWPATTY = False
+				WPA_HANDSHAKE_AIRCRACK = False
+				set_hscheck = True
+			elif args[i] == '-strip':
+				WPA_STRIP_HANDSHAKE = True
+				print GR+' [+]'+W+' handshake stripping '+G+'enabled'+W
+			elif args[i] == '-wpadt':
+				i += 1
+				WPA_DEAUTH_TIMEOUT = int(args[i])
+				print GR+' [+]'+W+' WPA deauth timeout set to '+G+'%s seconds'+W % (args[i])
+			elif args[i] == '-wpat':
+				i += 1
+				WPA_ATTACK_TIMEOUT = int(args[i])
+				print GR+' [+]'+W+' WPA attack timeout set to '+G+'%s seconds'+W % (args[i])
+			elif args[i] == '-crack':
+				WPA_DONT_CRACK = False
+				print GR+' [+]'+W+' WPA cracking '+G+'enabled'+W
+			if args[i] == '-tshark':
+				WPA_HANDSHAKE_TSHARK = True
+				print GR+' [+]'+W+' tshark handshake verification '+G+'enabled'+W
+			if args[i] == '-pyrit':
+				WPA_HANDSHAKE_PYRIT = True
+				print GR+' [+]'+W+' pyrit handshake verification '+G+'enabled'+W
+			if args[i] == '-aircrack':
+				WPA_HANDSHAKE_AIRCRACK = True
+				print GR+' [+]'+W+' aircrack handshake verification '+G+'enabled'+W
+			if args[i] == '-cowpatty':
+				WPA_HANDSHAKE_COWPATTY = True
+				print GR+' [+]'+W+' cowpatty handshake verification '+G+'enabled'+W
 
-		# WEP
-		if not set_wep and args[i] == '-chopchop' or args[i] == 'fragment' or args[i] == 'caffelatte' or args[i] == '-arpreplay':
-			WEP_CHOPCHOP   = False
-			WEP_ARPREPLAY  = False
-			WEP_CAFFELATTE = False
-			WEP_FRAGMENT   = False
-		if args[i] == '-chopchop': WEP_CHOPCHOP = True
-		if args[i] == '-fragment': WEP_FRAGMENT = True
-		if args[i] == '-caffelatte': WEP_CAFFELATTE = True
-		if args[i] == '-arpreplay': WEP_ARPREPLAY = True
-		if args[i] == '-nofake': WEP_IGNORE_FAKEAUTH = False
+			# WEP
+			if not set_wep and args[i] == '-chopchop' or args[i] == 'fragment' or args[i] == 'caffelatte' or args[i] == '-arpreplay':
+				WEP_CHOPCHOP   = False
+				WEP_ARPREPLAY  = False
+				WEP_CAFFELATTE = False
+				WEP_FRAGMENT   = False
+			if args[i] == '-chopchop': 
+				print GR+' [+]'+W+' WEP chop-chop attack '+G+'enabled'+W
+				WEP_CHOPCHOP = True
+			if args[i] == '-fragment' or args[i] == '-frag' or args[i] == '-fragmentation':
+				print GR+' [+]'+W+' WEP fragmentation attack '+G+'enabled'+W
+				WEP_FRAGMENT = True
+			if args[i] == '-caffelatte': 
+				print GR+' [+]'+W+' WEP caffe-latte attack '+G+'enabled'+W
+				WEP_CAFFELATTE = True
+			if args[i] == '-arpreplay': 
+				print GR+' [+]'+W+' WEP arp-replay attack '+G+'enabled'+W
+				WEP_ARPREPLAY = True
+			if args[i] == '-nofake': 
+				print GR+' [+]'+W+' ignoring failed fake-authentication '+R+'disabled'+W
+				WEP_IGNORE_FAKEAUTH = False
+			if args[i] == '-wept':
+				i += 1
+				try:
+					WEP_TIMEOUT = int(args[i])
+				except ValueError: print R+' [!]'+O+' invalid timeout: %s' % (R+args[i]+W)
+				except IndexError: print R+' [!]'+O+' no timeout given!'+W
+				else: print GR+' [+]'+W+' WEP attack timeout set to %s' % (G+args[i] + " seconds"+W)
+			if args[i] == '-pps':
+				i += 1
+				try:
+					WEP_PPS = int(args[i])
+				except ValueError: print R+' [!]'+O+' invalid value: %s' % (R+args[i]+W)
+				except IndexError: print R+' [!]'+O+' no value given!'+W
+				else: print GR+' [+]'+W+' packets-per-second rate set to %s' % (G+args[i] + " packets/sec"+W)
+	except IndexError:
+		print '\nindexerror\n\n'
 
 def has_handshake(target, capfile):
 	"""
@@ -1221,7 +1316,7 @@ def attack_wep(iface, target, clients):
 	started_cracking = False # Flag for when we have started aircrack-ng
 	client_mac       = ''    # The client mac we will send packets to/from
 	try:
-		if wep_fake_auth(iface, target, sec_to_hms(WEP_TIMEOUT * total_attacks)):
+		if wep_fake_auth(iface, target, sec_to_hms(WEP_TIMEOUT)):
 			# Successful fake auth
 			client_mac = THIS_MAC
 		else:
@@ -1257,6 +1352,9 @@ def attack_wep(iface, target, clients):
 			elif attack_num == 3: print G+'caffe-latte',
 			print 'attack'+W
 			
+			print ' %s captured %s ivs @ %s iv/sec' % (GR+sec_to_hms(WEP_TIMEOUT)+W, G+'0'+W, G+'0'+W),
+			stdout.flush()
+
 			time.sleep(1)
 			if attack_num == 1:
 				# Send a deauth packet to broadcast and all clients *just because!*
@@ -1275,7 +1373,8 @@ def attack_wep(iface, target, clients):
 				csv = parse_csv(temp + 'wep-01.csv')[0]
 				if len(csv) > 0:
 					ivs = int(csv[0].data)
-					print "\r %s captured %s%d%s ivs, iv/sec: %s%d%s" % (GR+current_hms+W, G, ivs, W, G, (ivs - last_ivs) / 5, W),
+					print "\r %s captured %s%d%s ivs @ %s%d%s iv/sec" % \
+					          (GR+current_hms+W, G, ivs, W, G, (ivs - last_ivs) / 5, W),
 					last_ivs = ivs
 					stdout.flush()
 					if ivs >= WEP_CRACK_AT_IVS and not started_cracking:
@@ -1696,12 +1795,12 @@ def wps_attack(iface, target):
 						key = line[14:-1]
 						cracked = True
 				
-				if pin != '': print GR+'\n\n [+]'+W+' PIN found:     %s' % (G+pin+W)
+				if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
 				if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
 				break
 		
 		if cracked:
-			WPA_FINDINGS.append(W+"found %s's WPA key: \"%s\", WPS PIN: %s" % (G+target.ssid+W, C+key+W, G+pin+W))
+			WPA_FINDINGS.append(W+"found %s's WPA key: \"%s\", WPS PIN: %s" % (G+target.ssid+W, C+key+W, C+pin+W))
 			WPA_FINDINGS.append('')
 		
 	except KeyboardInterrupt:
