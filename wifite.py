@@ -12,13 +12,13 @@
 	 
 	 * WEP - ability to pause/skip/continue	 
 	 * Unknown SSID's : Send deauth's (when on fixed channel) to unmask!
-	 * Fix WPA handshake file naming system: SSID_00-aa-bb-cc.cap
 	 
 	 * Option to "analyze" or "check" cap files for handshakes.
 	   Shows output from other programs like tshark, cowpatty, pyrit, aircrack.
 	 
 	 * reaver:
 	 	 MONITOR ACTIVITY!
+	 	 - Enter ESSID when executing
 	 	 - Count PINs tried
 	   - Ensure WPS key attempts have begun. 
 	   - If no attempts can be made, stop attack and print
@@ -516,7 +516,9 @@ def get_iface():
 			monitors.append(iface)
 	
 	# only one device
-	if len(monitors) == 1: return monitors[0]
+	if WIRELESS_IFACE != '' and monitors.count(WIRELESS_IFACE): return WIRELESS_IFACE
+	elif len(monitors) == 1:
+		return monitors[0] # Default to only device in monitor mode
 	elif len(monitors) > 1:
 		print GR+" [+]"+W+" interfaces in "+G+"monitor mode:"+W
 		for i, monitor in enumerate(monitors):
@@ -537,7 +539,10 @@ def get_iface():
 		print O+'[!]'+R+" no wireless interfaces were found."+W
 		print O+'[!]'+R+" you need to plug in a wifi device or install drivers."+W
 		exit_gracefully(0)
-	
+	elif WIRELESS_IFACE != '' and monitors.count(WIRELESS_IFACE) > 0:
+		mac_anonymize(monitor)
+		return enable_monitor-mode
+
 	elif len(monitors) == 1:
 		monitor = monitors[0][:monitors[0].find('\t')]
 		mac_anonymize(monitor)
@@ -589,6 +594,14 @@ def handle_args():
 			except IndexError: print O+' [!]'+R+' no channel given!'+W
 		if args[i] == '-mac':
 			DO_NOT_CHANGE_MAC = False
+		if args[i] == '-i':
+			i += 1
+			WIRELESS_IFACE = args[i]
+			print GR+' [!]'+W+' set interface: %s' % (G+args[i]+W)
+
+
+
+
 
 
 def has_handshake(target, capfile):
