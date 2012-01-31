@@ -189,6 +189,19 @@ class Client:
 # FUNCTIONS #
 #############
 
+
+def print_and_exec(cmd):
+	"""
+		Prints and executes command "cmd". Also waits half a second
+		Used by rtl8187_fix (for prettiness)
+	"""
+	print '                                                        \r',
+	print O+' [!] '+W+' '.join(cmd),
+	stdout.flush()
+	call(cmd, stdout=DN, stderr=DN)
+	time.sleep(0.5)
+
+
 def rtl8187_fix(iface):
 	"""
 		Attempts to solve "Unknown error 132" common with RTL8187 devices.
@@ -225,47 +238,15 @@ def rtl8187_fix(iface):
 		original_iface = line.split()[0] # line[:line.find('\t')]
 	
 	# Remove drive modules, block/unblock ifaces, probe new modules.
-	time.sleep(0.5)
-	print '                                                        \r',
-	print O+' [!] '+W+' '.join(['ifconfig', original_iface, 'down']),
-	stdout.flush()
-	call(['ifconfig', original_iface, 'down'], stdout=DN, stderr=DN)
 	
-	time.sleep(0.5)
-	print '                                                        \r',
-	print O+' [!] '+W+' '.join(['rmmod', 'rtl8187']),
-	stdout.flush()
-	call(['rmmod', 'rtl8187'],               stdout=DN, stderr=DN)
 	
-	time.sleep(0.5)
-	print '                                                        \r',
-	print O+' [!] '+W+'rfkill block all',
-	stdout.flush()
-	call(['rfkill', 'block', 'all'],         stdout=DN, stderr=DN)
-	
-	time.sleep(0.5)
-	print '                                                        \r',
-	print O+' [!] '+W+'rfkill unblock all',
-	stdout.flush()
-	call(['rfkill', 'unblock', 'all'],       stdout=DN, stderr=DN)
-	
-	time.sleep(0.5)
-	print '                                                        \r',
-	print O+' [!] '+W+'modprobe rtl8187',
-	stdout.flush()
-	call(['modprobe', 'rtl8187'],            stdout=DN, stderr=DN)
-	
-	time.sleep(0.5)
-	print '                                                        \r',
-	print O+' [!] '+W+' '.join(['ifconfig', original_iface, 'up']),
-	stdout.flush()
-	call(['ifconfig', original_iface, 'up'], stdout=DN, stderr=DN)
-	
-	time.sleep(0.5)
-	print '                                                        \r',
-	print O+' [!] '+W+' '.join(['airmon-ng', 'start', original_iface]),
-	stdout.flush()
-	call(['airmon-ng', 'start', original_iface], stdout=DN, stderr=DN)
+	print_and_exec(['ifconfig', original_iface, 'down'])
+	print_and_exec(['rmmod', 'rtl8187'])
+	print_and_exec(['rfkill', 'block', 'all'])
+	print_and_exec(['rfkill', 'unblock', 'all'])
+	print_and_exec(['modprobe', 'rtl8187'])
+	print_and_exec(['ifconfig', original_iface, 'up'])
+	print_and_exec(['airmon-ng', 'start', original_iface])
 	
 	print '                                                        \r',
 	print O+' [!] '+W+'restarting scan...'
@@ -337,7 +318,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 				exit_gracefully(1)
 				
 			(targets, clients) = parse_csv(temp + 'wifite-01.csv')
-			print '\r %s %s wireless networks. %s target%s and %s client%s found' % (
+			print ' %s %s wireless networks. %s target%s and %s client%s found   \r' % (
 			      sec_to_hms(time.time() - time_started), G+'scanning'+W, 
 			      G+str(len(targets))+W, '' if len(targets) == 1 else 's', 
 			      G+str(len(clients))+W, '' if len(clients) == 1 else 's'),
@@ -531,7 +512,8 @@ def get_iface():
 	proc  = Popen(['airmon-ng'], stdout=PIPE, stderr=DN)
 	for line in proc.communicate()[0].split('\n'):
 		if len(line) == 0 or line.startswith('Interface'): continue
-		monitors.append(line[:line.find('\t')])
+		#monitors.append(line[:line.find('\t')])
+		monitors.append(line)
 	
 	if len(monitors) == 0:
 		print O + '[!]' + R + " no wireless interfaces were found." + W
@@ -539,26 +521,25 @@ def get_iface():
 		exit_gracefully(0)
 	
 	elif len(monitors) == 1:
-		mac_anonymize(monitors[0])
+		monitor = monitors[0][:monitors[0].find('\t')]
+		mac_anonymize(monitor)
 		
-		return enable_monitor_mode(monitors[0])
-		
-		IFACE_TO_TAKE_DOWN = get_iface() # recursive call
-		return IFACE_TO_TAKE_DOWN
+		return enable_monitor_mode(monitor)
 	
-	print " [+] wireless devices:"
+	print " [+] available wireless devices:"
 	for i, monitor in enumerate(monitors):
-		print "  %d. %s" % (i + 1, monitor)
-	print " [+] select number of device to put into monitor mode (1-%d):" % len(monitors),
+		print "  %s%d%s. %s" % (G, i + 1, W, monitor)
+	print " [+] select number of device to put into monitor mode (%s1-%d%s):" % (G, len(monitors), W),
 	stdout.flush()
 	ri = raw_input()
 	while not ri.isdigit() or int(ri) < 1 or int(ri) > len(monitors):
-		print " [+] select number of device to put into monitor mode (1-%d):" % len(monitors),
+		print " [+] select number of device to put into monitor mode (%s1-%d%s):" % (G, len(monitors), W),
 		ri = raw_input()
 	i = int(ri)
-	mac_anonymize(monitors[i-1])
+	monitor = monitors[i-1][:monitors[i-1].find('\t')]
+	mac_anonymize(monitor)
 	
-	enable_monitor_mode(monitors[i-1])
+	return enable_monitor_mode(monitor)
 	
 
 def handle_args():
@@ -1325,7 +1306,6 @@ def get_mac_address(iface):
 	"""
 		Returns MAC address of "iface".
 	"""
-	print ' '.join(['ifconfig', iface])
 	proc = Popen(['ifconfig', iface], stdout=PIPE, stderr=DN)
 	proc.wait()
 	mac = ''
@@ -1694,11 +1674,15 @@ def exit_gracefully(code):
 #exit_gracefully(1)
 
 
+
 if __name__ == '__main__':
 	try:
 		handle_args()
 		main()
 	except KeyboardInterrupt:
 		print R+'\n (^C)'+O+' interrupted\n'+W
+	except EOFError:
+		print R+'\n (^D)'+O+' interrupted\n'+W
+	
 	exit_gracefully(0)
 
