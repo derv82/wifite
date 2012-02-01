@@ -1114,6 +1114,10 @@ def analyze_capfile(capfile):
 
 
 def get_essid_from_cap(bssid, capfile):
+	"""
+		Attempts to get ESSID from cap file using BSSID as reference.
+		Returns '' if not found.
+	"""
 	cmd = ['tshark',
 	       '-r', capfile,
 	       '-R', 'wlan.fc.type_subtype == 0x05 && wlan.sa == %s' % bssid,
@@ -1130,27 +1134,12 @@ def get_essid_from_cap(bssid, capfile):
 
 
 def get_bssid_from_cap(essid, capfile):
-	global TARGET_ESSID
 	"""
 		Returns first BSSID of access point found in cap file.
 		This is not accurate at all, but it's a good guess.
+		Returns '' if not found.
 	"""
-	
-	# Attempt to find SSID somewhere in the cap file (first probe response)
-	"""
-	if essid == '':
-		cmd = ['tshark',
-		       '-r', capfile,
-		       '-R', 'wlan.fc.type_subtype == 0x05',
-		       '-n']
-		proc = Popen(cmd, stdout=PIPE, stderr=DN)
-		proc.wait()
-		for line in proc.communicate()[0].split('\n'):
-			if line.find('SSID=') != -1:
-				essid = line[line.find('SSID=')+5:]
-				print GR+' [+]'+W+' resolved essid: %s' % (G+essid+W)
-				break
-	"""
+	global TARGET_ESSID
 	
 	 # Attempt to get BSSID based on ESSID
 	if essid != '':
@@ -1176,7 +1165,7 @@ def get_bssid_from_cap(essid, capfile):
 			while line.startswith(' ') or line.startswith('\t'): line = line[1:]
 			line = line.replace('\t', ' ')
 			line = line.replace('  ', ' ')
-			return line.split(' ')[3]
+			return line.split(' ')[2]
 		elif line.endswith('Key (msg 2/4)') or line.endswith('Key (msg 4/4)'):
 			while line.startswith(' ') or line.startswith('\t'): line = line[1:]
 			line = line.replace('\t', ' ')
