@@ -108,6 +108,7 @@ WPS_TIMEOUT         = 120   # Time to wait (in seconds) for successful PIN attem
 WIRELESS_IFACE     = '' # User-defined interface
 TARGET_CHANNEL     = 0  # User-defined channel to scan on
 TARGET_ESSID       = '' # User-defined ESSID of specific target to attack
+TARGET_BSSID       = '' # User-defined BSSID of specific target to attack
 IFACE_TO_TAKE_DOWN = '' # Interface that wifite puts into monitor mode
                         # It's our job to put it out of monitor mode after the attacks
 ORIGINAL_IFACE_MAC = ('', '') # Original interface name[0] and MAC address[1] (before spoofing)
@@ -205,7 +206,7 @@ def main():
 	"""
 	global TARGETS_REMAINING, THIS_MAC
 	
-	handle_args()
+	handle_args() # Parse args from command line, set global variables.
 	
 	# The "get_iface" method anonymizes the MAC address (if needed)
 	# and puts the interface into monitor mode.
@@ -295,7 +296,7 @@ def main():
 		
 			for finding in WEP_FINDINGS:
 				print '        ' + C+finding+W
-	
+		
 		caps = len(WPA_CAPS_TO_CRACK)
 		if caps > 0 and not WPA_DONT_CRACK:
 			print GR+' [+]'+W+' starting '+G+'WPA cracker'+W+' on %s%d handshake%s' % (G, caps, W if caps == 1 else 's'+W)
@@ -308,24 +309,25 @@ def main():
 
 def handle_args():
 	"""
-		Handles command-line arguments, sets variables.
+		Handles command-line arguments, sets global variables.
 	"""
-	global WIRELESS_IFACE, TARGET_CHANNEL, DO_NOT_CHANGE_MAC, TARGET_ESSID
+	global WIRELESS_IFACE, TARGET_CHANNEL, DO_NOT_CHANGE_MAC, TARGET_ESSID, TARGET_BSSID
 	global WPA_DISABLE, WPA_STRIP_HANDSHAKE, WPA_DEAUTH_TIMEOUT, WPA_ATTACK_TIMEOUT
 	global WPA_DONT_CRACK, WPA_DICTIONARY, WPA_HANDSHAKE_TSHARK, WPA_HANDSHAKE_PYRIT
 	global WPA_HANDSHAKE_AIRCRACK, WPA_HANDSHAKE_COWPATTY
 	global WEP_DISABLE, WEP_PPS, WEP_TIMEOUT, WEP_ARP_REPLAY, WEP_CHOPCHOP, WEP_FRAGMENT
 	global WEP_CAFFELATTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
 	global WPS_DISABLE
-
+	
 	args = argv[1:]
 	if args.count('-h') + args.count('--help') + args.count('?') + args.count('-help') > 0:
 		help()
-		gracefully_exit(0)
+		exit_gracefully(0)
 	
 	set_encrypt = False
 	set_hscheck = False
 	set_wep     = False
+	capfile     = ''  # Filename of .cap file to analyze for handshakes
 	
 	try:
 		for i in xrange(0, len(args)):
@@ -364,7 +366,23 @@ def handle_args():
 				try: TARGET_ESSID = args[i]
 				except ValueError: print R+' [!]'+O+' no ESSID given!'+W
 				else: print GR+' [+]'+W+' targetting ESSID "%s"' % (G+args[i]+W)
-
+			elif args[i] == '-b':
+				i += 1
+				try: TARGET_BSSID = args[i]
+				except ValueError: print R+' [!]'+O+' no BSSID given!'+W
+				else: print GR+' [+]'+W+' targetting BSSID "%s"' % (G+args[i]+W)
+			
+			elif args[i] == '-check':
+				i += 1
+				try: capfile = args[i]
+				except ValueError: print R+' [!]'+O+' no cap file given!'+W
+				else: 
+					if not os.path.exists(capfile): 
+						print R+' [!]'+O+' file not found: '+R+capfile+W
+						print R+' [!]'+O+' unable to analyze capture file!\n'+W
+						exit_gracefully(1)
+					
+			
 			# WPA
 			if not set_hscheck and (args[i] == '-tshark' or args[i] == '-cowpatty' or args[i] == '-aircrack' or args[i] == 'pyrit'):
 				WPA_HANDSHAKE_TSHARK   = False
@@ -436,6 +454,9 @@ def handle_args():
 				else: print GR+' [+]'+W+' packets-per-second rate set to %s' % (G+args[i] + " packets/sec"+W)
 	except IndexError:
 		print '\nindexerror\n\n'
+	
+	if capfile != '':
+		analyze_capfile(capfile)
 
 
 def help():
@@ -643,7 +664,15 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 						except OSError: pass
 						except UnboundLocalError: pass
 						return ([t],clients)
-
+			if TARGET_BSSID != '':
+				for t in targets:
+					if t.bssid.lower() == TARGET_BSSID.lower():
+						send_interrupt(proc)
+						try: os.kill(proc.pid, SIGTERM)
+						except OSError: pass
+						except UnboundLocalError: pass
+						return ([t],clients)
+			
 			print ' %s %s wireless networks. %s target%s and %s client%s found   \r' % (
 			      sec_to_hms(time.time() - time_started), G+'scanning'+W, 
 			      G+str(len(targets))+W, '' if len(targets) == 1 else 's', 
@@ -1042,6 +1071,120 @@ def mac_change_back():
 	print "done"
 
 
+def analyze_capfile(capfile):
+	"""
+		Analyzes given capfile for handshakes using various programs.
+		Prints results to console.
+	"""
+	global TARGET_BSSID, TARGET_ESSID
+	
+	if TARGET_ESSID == '' and TARGET_BSSID == '':
+		print R+' [!]'+O+' some programs require target bssid and essid'
+		print R+' [!]'+O+' please enter essid (access point name) using -e <name>'
+		print R+' [!]'+O+' and/or target bssid (mac address) using -b <mac>\n'
+		# exit_gracefully(1)
+	
+	if TARGET_BSSID == '':
+		# Get first BSSID found in tshark!
+		TARGET_BSSID = get_bssid_from_cap(TARGET_ESSID, capfile)
+		if TARGET_BSSID.find('->') != -1: TARGET_BSSID == ''
+		if TARGET_BSSID == '':
+			print R+' [!]'+O+' unable to find BSSID from ESSID!'
+		else:
+			print GR+' [+]'+W+' found bssid: %s' % (G+TARGET_BSSID+W)
+	
+	if TARGET_BSSID != '' and TARGET_ESSID == '':
+		TARGET_ESSID = get_essid_from_cap(TARGET_BSSID, capfile)
+		
+	print GR+' [+]'+W+' checking for handshakes in %s' % (G+capfile+W)
+	
+	t = Target(TARGET_BSSID, '', '', '', 'WPA', TARGET_ESSID)
+	
+	result = has_handshake_pyrit(t, capfile)
+	print GR+' [+]'+W+'    '+G+'pyrit'+W+':\t\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	result = has_handshake_cowpatty(t, capfile, nonstrict=True)
+	print GR+' [+]'+W+'    '+G+'cowpatty'+W+' (nonstrict):\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	result = has_handshake_cowpatty(t, capfile, nonstrict=False)
+	print GR+' [+]'+W+'    '+G+'cowpatty'+W+' (strict):\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	result = has_handshake_tshark(t, capfile)
+	print GR+' [+]'+W+'    '+G+'tshark'+W+':\t\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	result = has_handshake_aircrack(t, capfile)
+	print GR+' [+]'+W+'    '+G+'aircrack-ng'+W+':\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	exit_gracefully(0)
+
+
+def get_essid_from_cap(bssid, capfile):
+	cmd = ['tshark',
+	       '-r', capfile,
+	       '-R', 'wlan.fc.type_subtype == 0x05 && wlan.sa == %s' % bssid,
+	       '-n']
+	proc = Popen(cmd, stdout=PIPE, stderr=DN)
+	proc.wait()
+	for line in proc.communicate()[0].split('\n'):
+		if line.find('SSID=') != -1:
+			essid = line[line.find('SSID=')+5:]
+			print GR+' [+]'+W+' found essid: %s' % (G+essid+W)
+			return essid
+	print R+' [!]'+O+' unable to find essid!'+W
+	return ''
+
+
+def get_bssid_from_cap(essid, capfile):
+	global TARGET_ESSID
+	"""
+		Returns first BSSID of access point found in cap file.
+		This is not accurate at all, but it's a good guess.
+	"""
+	
+	# Attempt to find SSID somewhere in the cap file (first probe response)
+	"""
+	if essid == '':
+		cmd = ['tshark',
+		       '-r', capfile,
+		       '-R', 'wlan.fc.type_subtype == 0x05',
+		       '-n']
+		proc = Popen(cmd, stdout=PIPE, stderr=DN)
+		proc.wait()
+		for line in proc.communicate()[0].split('\n'):
+			if line.find('SSID=') != -1:
+				essid = line[line.find('SSID=')+5:]
+				print GR+' [+]'+W+' resolved essid: %s' % (G+essid+W)
+				break
+	"""
+	
+	 # Attempt to get BSSID based on ESSID
+	if essid != '':
+		cmd = ['tshark',
+		       '-r', capfile,
+		       '-R', 'wlan_mgt.ssid == "%s" && wlan.fc.type_subtype == 0x05' % (essid),
+		       '-n',            # Do not resolve MAC vendor names
+		       '-T', 'fields',  # Only display certain fields
+		       '-e', 'wlan.sa'] # souce MAC address
+		proc = Popen(cmd, stdout=PIPE, stderr=DN)
+		proc.wait()
+		bssid = proc.communicate()[0].split('\n')[0]
+		if bssid != '': return bssid
+	
+	cmd = ['tshark',
+	       '-r', capfile,
+	       '-R', 'eapol',
+	       '-n']
+	proc = Popen(cmd, stdout=PIPE, stderr=DN)
+	proc.wait()
+	for line in proc.communicate()[0].split('\n'):
+		if line.endswith('Key (msg 1/4)') or line.endswith('Key (msg 3/4)'):
+			while line.startswith(' ') or line.startswith('\t'): line = line[1:]
+			line = line.replace('\t', ' ')
+			line = line.replace('  ', ' ')
+			return line.split(' ')[3]
+		elif line.endswith('Key (msg 2/4)') or line.endswith('Key (msg 4/4)'):
+			while line.startswith(' ') or line.startswith('\t'): line = line[1:]
+			line = line.replace('\t', ' ')
+			line = line.replace('  ', ' ')
+			return line.split(' ')[4]
+	return ''
+
+
 def exit_gracefully(code):
 	"""
 		We may exit the program at any time.
@@ -1255,19 +1398,13 @@ def wpa_get_handshake(iface, target, clients):
 	
 	return got_handshake
 
-
-def has_handshake(target, capfile):
+def has_handshake_tshark(target, capfile):
 	"""
-		Checks if .cap file contains a handshake.
-		Returns True if handshake is found, False otherwise.
+		Uses TShark to check for a handshake.
+		Returns "True" if handshake is found, false otherwise.
 	"""
-	
-	valid_handshake = True
-	tried = False
-	
-	if WPA_HANDSHAKE_TSHARK and program_exists('tshark'):
+	if program_exists('tshark'):
 		# Call Tshark to return list of EAPOL packets in cap file.
-		tried = True
 		cmd = ['tshark',
 		       '-r', capfile, # Input file
 		       '-R', 'eapol', # Filter (only EAPOL packets)
@@ -1276,7 +1413,6 @@ def has_handshake(target, capfile):
 		proc.wait()
 		lines = proc.communicate()[0].split('\n')
 		
-		tshark_handshake = False
 		# Get list of all clients in cap file
 		clients = []
 		for line in lines:
@@ -1335,70 +1471,110 @@ def has_handshake(target, capfile):
 				# We need the first 4 messages of the 4-way handshake
 				# Although aircrack-ng cracks just fine with only 3 of the messages...
 				if msg_num >= 4:
-					tshark_handshake = True
-		valid_handshake = valid_handshake and tshark_handshake
+					return True
+	return False
+
+def has_handshake_cowpatty(target, capfile, nonstrict=True):
+	"""
+		Uses cowpatty to check for a handshake.
+		Returns "True" if handshake is found, false otherwise.
+	"""
+	if not program_exists('cowpatty'): return False
+	
+	# Call cowpatty to check if capfile contains a valid handshake.
+	cmd = ['cowpatty',
+	       '-r', capfile,     # input file
+	       '-s', target.ssid, # SSID
+	       '-c']              # Check for handshake
+	# Uses frames 1, 2, or 3 for key attack
+	if nonstrict: cmd.append('-2')
+	proc = Popen(cmd, stdout=PIPE, stderr=DN)
+	proc.wait()
+	response = proc.communicate()[0]
+	if response.find('incomplete four-way handshake exchange') != -1:
+		return False
+	elif response.find('Unsupported or unrecognized pcap file.') != -1:
+		return False
+	elif response.find('Unable to open capture file: Success') != -1:
+		return False
+	return True
+
+def has_handshake_pyrit(target, capfile):
+	"""
+		Uses pyrit to check for a handshake.
+		Returns "True" if handshake is found, false otherwise.
+	"""
+	if not program_exists('pyrit'): return False
+	
+	# Call pyrit to "Analyze" the cap file's handshakes.
+	cmd = ['pyrit',
+	       '-r', capfile,
+	       'analyze']
+	proc = Popen(cmd, stdout=PIPE, stderr=DN)
+	proc.wait()
+	hit_essid = False
+	for line in proc.communicate()[0].split('\n'):
+		# Iterate over every line of output by Pyrit
+		if line == '' or line == None: continue
+		if line.find("AccessPoint") != -1:
+			hit_essid = (line.find("('" + target.ssid + "')") != -1) and \
+			            (line.lower().find(target.bssid.lower()) != -1)
+			#hit_essid = (line.lower().find(target.bssid.lower()))
+		
+		else:
+			# If Pyrit says it's good or workable, it's a valid handshake.
+			if hit_essid and (line.find(', good, ') != -1 or \
+			                  line.find(', workable, ') != -1):
+				                # or line.find(', bad, ') != -1):
+				return True
+	return False
+
+def has_handshake_aircrack(target, capfile):
+	"""
+		Uses aircrack-ng to check for handshake.
+		Returns True if found, False otherwise.
+	"""
+	if not program_exists('aircrack-ng'): return False
+	crack = 'echo "" | aircrack-ng -a 2 -w - -b ' + target.bssid + ' ' + capfile
+	proc_crack = Popen(crack, stdout=PIPE, stderr=DN, shell=True)
+	proc_crack.wait()
+	txt = proc_crack.communicate()[0]
+	
+	return (txt.find('Passphrase not in dictionary') != -1)
+
+def has_handshake(target, capfile):
+	"""
+		Checks if .cap file contains a handshake.
+		Returns True if handshake is found, False otherwise.
+	"""
+	valid_handshake = True
+	tried = False
+	if WPA_HANDSHAKE_TSHARK:
+		tried = True
+		valid_handshake = has_handshake_tshark(target, capfile)
+	
+	if valid_handshake and WPA_HANDSHAKE_COWPATTY:
+		tried = True
+		valid_handshake = has_handshake_cowpatty(target, capfile)
 	
 	# Use CowPatty to check for handshake.
-	if valid_handshake and WPA_HANDSHAKE_COWPATTY and program_exists('cowpatty'):
+	if valid_handshake and WPA_HANDSHAKE_COWPATTY:
 		tried = True
-		# Call cowpatty to check if capfile contains a valid handshake.
-		cmd = ['cowpatty',
-		       '-r', capfile,     # input file
-		       '-s', target.ssid, # SSID
-		       '-2',              # Uses frames 1, 2, or 3 for key attack (nonstrict)
-		       '-c']              # Check for handshake
-		proc = Popen(cmd, stdout=PIPE, stderr=DN)
-		proc.wait()
-		response = proc.communicate()[0]
-		if response.find('incomplete four-way handshake exchange') != -1:
-			valid_handshake = False
-		elif response.find('Unsupported or unrecognized pcap file.') != -1:
-			valid_handshake = False
-		elif response.find('Unable to open capture file: Success') != -1:
-			valid_handshake = False
+		valid_handshake = has_handshake_cowpatty(target, capfile)
 		
 	# Check for handshake using Pyrit if applicable
-	if valid_handshake and WPA_HANDSHAKE_PYRIT and program_exists('pyrit'):
+	if valid_handshake and WPA_HANDSHAKE_PYRIT:
 		tried = True
-		# Call pyrit to "Analyze" the cap file's handshakes.
-		cmd = ['pyrit',
-		       '-r', capfile,
-		       'analyze']
-		proc = Popen(cmd, stdout=PIPE, stderr=DN)
-		proc.wait()
-		hit_essid = False
-		pyrit_valid = False
-		for line in proc.communicate()[0].split('\n'):
-			# Iterate over every line of output by Pyrit
-			if line == '' or line == None: continue
-			if line.find("AccessPoint") != -1:
-				hit_essid = (line.find("('" + target.ssid + "')") != -1) and \
-				            (line.lower().find(target.bssid.lower()) != -1)
-				#hit_essid = (line.lower().find(target.bssid.lower()))
-			
-			else:
-				# If Pyrit says it's good or workable, it's a valid handshake.
-				if hit_essid and (line.find(', good, ') != -1 or \
-				                  line.find(', workable, ') != -1):
-					                # or line.find(', bad, ') != -1):
-					pyrit_valid = True
-		valid_handshake = valid_handshake and pyrit_valid
+		valid_handshake = has_handshake_pyrit(target, capfile)
 	
 	# Check for handshake using aircrack-ng
-	if valid_handshake and WPA_HANDSHAKE_AIRCRACK and program_exists('aircrack-ng'):
+	if valid_handshake and WPA_HANDSHAKE_AIRCRACK:
 		tried = True
-		crack = 'echo "" | aircrack-ng -a 2 -w - -b ' + target.bssid + ' ' + capfile
-		proc_crack = Popen(crack, stdout=PIPE, stderr=DN, shell=True)
-		proc_crack.wait()
-		txt = proc_crack.communicate()[0]
-		
-		valid_handshake = valid_handshake and (txt.find('Passphrase not in dictionary') != -1)
+		valid_handshake = has_handshake_aircrack(target, capfile)
 	
-	if tried:
-		return valid_handshake
-	else:
-		print O+' [!]'+R+' unable to check for handshake: no handshake options are enabled.'
-		return False
+	if tried: return valid_handshake
+	print O+' [!]'+R+' unable to check for handshake: all handshake options are disabled!'
+	exit_gracefully(1)
 
 
 def strip_handshake(capfile):
@@ -1994,10 +2170,8 @@ def wps_attack(iface, target):
 if __name__ == '__main__':
 	try:
 		main()
-	except KeyboardInterrupt:
-		print R+'\n (^C)'+O+' interrupted\n'+W
-	except EOFError:
-		print R+'\n (^D)'+O+' interrupted\n'+W
+	except KeyboardInterrupt: print R+'\n (^C)'+O+' interrupted\n'+W
+	except EOFError:          print R+'\n (^D)'+O+' interrupted\n'+W
 	
 	exit_gracefully(0)
 
