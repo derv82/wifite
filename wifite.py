@@ -8,7 +8,11 @@
 	author: derv82 at gmail
 	
 	TODO:
+	 * Show Channel (CH) column when displaying targets
+	 * Show BSSId as well? (too wide? make it a switch)
 
+	 * 
+	 
 	 * WEP:
 	   - ability to pause/skip/continue	 
 	 
@@ -60,7 +64,7 @@ import re # RegEx, Converting SSID to filename
 # GLOBAL VARIABLES IN ALL CAPS #
 ################################
 
-REVISION = 83
+REVISION = 85;
 
 
 # WPA variables
@@ -73,7 +77,7 @@ WPA_HANDSHAKE_DIR    = 'hs'  # Directory in which handshakes .cap files are stor
 if WPA_HANDSHAKE_DIR[-1] == os.sep: WPA_HANDSHAKE_DIR = WPA_HANDSHAKE_DIR[:-1]
 WPA_FINDINGS         = []    # List of strings containing info on successful WPA attacks
 WPA_DONT_CRACK       = False # Flag to skip cracking of handshakes
-WPA_DICTIONARY       = 'phpbb.txt' # '/pentest/web/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
+WPA_DICTIONARY       = '/pentest/web/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
 if not os.path.exists(WPA_DICTIONARY): WPA_DICTIONARY = ''
 # Various programs to use when checking for a four-way handshake.
 # True means the program must find a valid handshake in order for wifite to recognize a handshake.
@@ -89,11 +93,11 @@ WPA_HANDSHAKE_COWPATTY = True  # Uses more lenient "nonstrict mode" (-2)
 WEP_DISABLE         = False # Flag for ignoring WEP networks
 WEP_PPS             = 600   # packets per second (Tx rate)
 WEP_TIMEOUT         = 600   # Amount of time to give each attack
-WEP_ARP_REPLAY      = False#True  # Various WEP-based attacks via aireplay-ng
-WEP_CHOPCHOP        = False  #
-WEP_FRAGMENT        = False#True  #
-WEP_CAFFELATTE      = False#True  #
-WEP_P0841           = False
+WEP_ARP_REPLAY      = True  # Various WEP-based attacks via aireplay-ng
+WEP_CHOPCHOP        = True  #
+WEP_FRAGMENT        = True  #
+WEP_CAFFELATTE      = True  #
+WEP_P0841           = True
 WEP_HIRTE           = True
 WEP_CRACK_AT_IVS    = 10000 # Number of IVS at which we start cracking
 WEP_IGNORE_FAKEAUTH = True  # When True, continues attack despite fake authentication failure
@@ -138,7 +142,7 @@ if os.getuid() != 0:
 	exit(1)
 
 if not os.uname()[0].startswith("Linux"):
-	O+' [!]'+R+' WARNING:'+G+' wifite'+W+' must be run via '+O+'linux'+W
+	O+' [!]'+R+' WARNING:'+G+' wifite'+W+' must be run on '+O+'linux'+W
 	exit(1)
 
 
@@ -498,12 +502,12 @@ def handle_args():
 				print GR+' [+]'+W+' WEP p0841 attack '+G+'enabled'+W
 				WEP_P0841 = True
 			if args[i] == '-hirte': 
-				print GR+' [+]'+W+' WEP hrite attack '+G+'enabled'+W
+				print GR+' [+]'+W+' WEP hirte attack '+G+'enabled'+W
 				WEP_HIRTE = True
 			if args[i] == '-nofake': 
 				print GR+' [+]'+W+' ignoring failed fake-authentication '+R+'disabled'+W
 				WEP_IGNORE_FAKEAUTH = False
-			if args[i] == '-wept':
+			if args[i] == '-wept' or args[i] == '-weptime':
 				i += 1
 				try:
 					WEP_TIMEOUT = int(args[i])
@@ -556,18 +560,22 @@ def help():
 	de      = G
 	
 	print head+'   COMMANDS'+W
-	print sw+'\t-i '+var+'<iface>  \t'+des+'use interface for capture      '+de+'[auto]'+W
-	print sw+'\t-c '+var+'<chan>   \t'+des+'channel to scan for targets on '+de+'[auto]'+W
-	print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name) '+de+'[ask]'+W
-	print ''
 	print sw+'\t-check '+var+'<file>\t'+des+'check capfile <file> for handshakes. prints results\n'+W
+
+	print head+'   GLOBAL'+W
+	print sw+'\t-i '+var+'<iface>  \t'+des+'wireless interface for capturing '+de+'[auto]'+W
+	print sw+'\t-c '+var+'<channel>\t'+des+'channel to scan for targets      '+de+'[auto]'+W
+	print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name) '+de+'[ask]'+W
+	print sw+'\t-b '+var+'<bssid>  \t'+des+'target a specific access point by bssid (mac) '+de+'[auto]'+W
+	print ''
 	
 	print head+'\n   WPA'+W
 	print sw+'\t-wpa        \t'+des+'only target WPA networks (works with -wps -wep)   '+de+'[off]'+W
-	print sw+'\t-wpat '+var+'<s>   \t'+des+'time to wait for WPA attack to complete (seconds) '+de+'[300]'+W
-	print sw+'\t-wpadt '+var+'<s>  \t'+des+'time to wait between sending deauth packets (sec) '+de+'[10]'+W
+	print sw+'\t-wpat '+var+'<sec>   \t'+des+'time to wait for WPA attack to complete (seconds) '+de+'[300]'+W
+	print sw+'\t-wpadt '+var+'<sec>  \t'+des+'time to wait between sending deauth packets (sec) '+de+'[10]'+W
 	print sw+'\t-strip      \t'+des+'strip handshake using tshark or pyrit             '+de+'[off]'+W
 	print sw+'\t-crack '+var+'<dic>\t'+des+'crack WPA handshakes using '+var+'<dic>'+des+' wordlist file    '+de+'[off]'+W
+	print sw+'\t-dict '+var+'<file>\t'+des+'specify dictionary to use when cracking WPA '+de+'[darkc0de.lst]'+W
 	print sw+'\t-aircrack   \t'+des+'verify handshake using aircrack '+de+'[on]'+W
 	print sw+'\t-pyrit      \t'+des+'verify handshake using pyrit    '+de+'[on]'+W
 	print sw+'\t-tshark     \t'+des+'verify handshake using tshark   '+de+'[off]'+W
@@ -576,14 +584,18 @@ def help():
 	print head+'\n   WEP'+W
 	print sw+'\t-wep        \t'+des+'only target WEP networks (works with -wpa and -wps)  '+de+'[off]'+W
 	print sw+'\t-pps '+var+'<num>  \t'+des+'set the number of packets per second to inject       '+de+'[600]'+W
-	print sw+'\t-weptime '+var+'<s>\t'+des+'time to wait for *each* WEP attack to complete (sec) '+de+'[600]'+W
+	print sw+'\t-wept '+var+'<sec> \t'+des+'time to wait for *each* WEP attack to complete (sec) '+de+'[600]'+W
 	print sw+'\t-chopchop   \t'+des+'use chopchop attack      '+de+'[on]'+W
 	print sw+'\t-arpreplay  \t'+des+'use arpreplay attack     '+de+'[on]'+W
 	print sw+'\t-fragment   \t'+des+'use fragmentation attack '+de+'[on]'+W
 	print sw+'\t-caffelatte \t'+des+'use caffe-latte attack   '+de+'[on]'+W
+	print sw+'\t-p0841      \t'+des+'use -p0841 attack        '+de+'[on]'+W
+	print sw+'\t-hirte      \t'+des+'use hirte (cfrag) attack '+de+'[on]'+W
 	print sw+'\t-nofakeauth \t'+des+'stop attack if fake authentication fails '+de+'[off]'+W
 	print sw+'\t-wepca '+GR+'<n>  \t'+des+'start cracking when number of ivs is greater than n '+de+'[10000]'+W
 	
+	print head+'\n   EXAMPLE'+W
+	print sw+'\t./wifite.py '+W+'-wps -wep -c 6 -p 600'+W
 	print ''
 
 
@@ -1742,6 +1754,10 @@ def wpa_crack(capfile):
 		This is crude and slow. If people want to crack using pyrit or cowpatty or oclhashcat,
 		they can do so manually.
 	"""
+	if WPA_DICTIONARY == '':
+		print R+' [!]'+O+' no WPA dictionary found! use -dict <file> command-line argument'+W
+		return False
+
 	print GR+' [0:00:00]'+W+' cracking %s with %s' % (G+capfile.ssid+W, G+'aircrack-ng'+W)
 	start_time = time.time()
 	cracked = False
