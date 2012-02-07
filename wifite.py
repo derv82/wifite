@@ -338,21 +338,23 @@ def initial_check():
 	"""
 		Ensures required programs are installed.
 	"""
+	global WPS_DISABLE
 	airs = ['aircrack-ng', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'packetforge-ng']
 	for air in airs:
 		if program_exists(air): continue
 		print R+' [!]'+O+' required program not found: %s' % (R+air+W)
 		print R+' [!]'+O+' this program is bundled with the aircrack-ng suite:'+W
-		print R+' [!]'+O+' wifite requires the aircrack-ng suite, available at:'+W
-		print GR+' [!]'+O+'        '+C+'http://www.aircrack-ng.org/\n'+W
+		print R+' [!]'+O+'        '+C+'http://www.aircrack-ng.org/'+W
+		print R+' [!]'+O+' or: '+W+'sudo apt-get install aircrack-ng\n'+W
 		exit_gracefully(1)
 	
 	printed = False
 	# Check reaver
 	if not program_exists('reaver'):
 		printed = True
-		print R+' [!]'+O+' WPS compatibility disabled: '+R+'reaver'+O+' not found'+W
-		print R+' [!]'+O+' available at '+C+'http://code.google.com/p/reaver-wps'+W
+		print R+' [!]'+O+' WPS attacks disabled: '+R+'reaver'+O+' not found'+W
+		print R+'    '+O+'   available at '+C+'http://code.google.com/p/reaver-wps'+W
+		WPS_DISABLE = True
 	elif not program_exists('walsh') and not program_exists('wash'):
 		printed = True
 		print R+' [!]'+O+' reaver\'s scanning tool '+R+'walsh'+O+' (or '+R+'wash'+O+') was not found'+W
@@ -363,7 +365,7 @@ def initial_check():
 	for rec in recs:
 		if program_exists(rec): continue
 		printed = True
-		print R+' [!]'+O+' the program %s is not required, but is recommended' % (R+rec+W)
+		print R+' [!]'+O+' the program %s is not required, but is recommended%s' % (R+rec+O, W)
 	if printed: print ''	
 
 
@@ -2305,11 +2307,12 @@ def wps_attack(iface, target):
 		Once PIN is found, PSK can be recovered.
 		PSK is displayed to user and added to WPS_FINDINGS
 	"""
-	if not program_exists('reaver'):
+	"""if not program_exists('reaver'):
 		print R+' [!]'+O+' the program '+G+'reaver'+O+' is required for WPS attacks'+W
 		print ' [!] you can download reaver at:'
 		print C+'        http://code.google.com/p/reaver-wps/'
 		return False
+	"""
 	
 	print GR+' [0:00:00]'+W+' initializing %sWPS PIN attack%s on %s' % (G, W, G+target.ssid+W)
 	
