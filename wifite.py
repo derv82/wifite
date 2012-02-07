@@ -940,6 +940,7 @@ def parse_csv(filename):
 		if line.startswith('BSSID') or line.startswith('Station MAC') or line.strip() == '': continue
 		if not hit_clients: # Access points
 			c = line.split(', ', 13)
+			if len(c) < 6: continue
 			cur = 11
 			c[cur] = c[cur].strip()
 			if not c[cur].isdigit(): cur += 1
@@ -962,6 +963,7 @@ def parse_csv(filename):
 			targets.append(t)
 		else: # Connected clients
 			c = line.split(', ')
+			if len(c) < 6: continue
 			bssid   = re.sub(r'[^a-zA-Z0-9:]', '', c[0])
 			station = re.sub(r'[^a-zA-Z0-9:]', '', c[5])
 			power   = c[3]
