@@ -1292,6 +1292,8 @@ def get_essid_from_cap(bssid, capfile):
 		Attempts to get ESSID from cap file using BSSID as reference.
 		Returns '' if not found.
 	"""
+	if not program_exists('tshark'): return ''
+
 	cmd = ['tshark',
 	       '-r', capfile,
 	       '-R', 'wlan.fc.type_subtype == 0x05 && wlan.sa == %s' % bssid,
@@ -1315,6 +1317,8 @@ def get_bssid_from_cap(essid, capfile):
 	"""
 	global TARGET_ESSID
 	
+	if not program_exists('tshark'): return ''
+
 	 # Attempt to get BSSID based on ESSID
 	if essid != '':
 		cmd = ['tshark',
