@@ -597,9 +597,9 @@ def help():
 	print sw+'\t-cowpatty   \t'+des+'verify handshake using cowpatty '+de+'[off]'+W
 	
 	print head+'\n   WEP'+W
-	print sw+'\t-wep        \t'+des+'only target WEP networks (works with -wpa and -wps)  '+de+'[off]'+W
-	print sw+'\t-pps '+var+'<num>  \t'+des+'set the number of packets per second to inject       '+de+'[600]'+W
-	print sw+'\t-wept '+var+'<sec> \t'+des+'time to wait for *each* WEP attack to complete (sec) '+de+'[600]'+W
+	print sw+'\t-wep        \t'+des+'only target WEP networks '+de+'[off]'+W
+	print sw+'\t-pps '+var+'<num>  \t'+des+'set the number of packets per second to inject '+de+'[600]'+W
+	print sw+'\t-wept '+var+'<sec> \t'+des+'sec to wait for *each* WEP attack to complete  '+de+'[600]'+W
 	print sw+'\t-chopchop   \t'+des+'use chopchop attack      '+de+'[on]'+W
 	print sw+'\t-arpreplay  \t'+des+'use arpreplay attack     '+de+'[on]'+W
 	print sw+'\t-fragment   \t'+des+'use fragmentation attack '+de+'[on]'+W
@@ -607,7 +607,7 @@ def help():
 	print sw+'\t-p0841      \t'+des+'use -p0841 attack        '+de+'[on]'+W
 	print sw+'\t-hirte      \t'+des+'use hirte (cfrag) attack '+de+'[on]'+W
 	print sw+'\t-nofakeauth \t'+des+'stop attack if fake authentication fails '+de+'[off]'+W
-	print sw+'\t-wepca '+GR+'<n>  \t'+des+'start cracking when number of ivs is greater than n '+de+'[10000]'+W
+	print sw+'\t-wepca '+GR+'<n>  \t'+des+'start cracking when number of ivs surpass n '+de+'[10000]'+W
 	
 	print head+'\n   EXAMPLE'+W
 	print sw+'\t./wifite.py '+W+'-wps -wep -c 6 -p 600'+W
