@@ -8,8 +8,6 @@
 	author: derv82 at gmail
 	
 	TODO:
-	 * Show Channel (CH) column when displaying targets
-	 * Show BSSId as well? (too wide? make it a switch)
 	 * Target networks with power > X db
 	
 	 Remember cracked access points
@@ -135,7 +133,7 @@ DO_NOT_CHANGE_MAC  = True # Flag for disabling MAC anonymizer
 TARGETS_REMAINING  = 0  # Number of access points remaining to attack
 WPA_CAPS_TO_CRACK  = [] # list of .cap files to crack (full of CapFile objects)
 THIS_MAC           = '' # The interfaces current MAC address.
-
+SHOW_MAC_IN_SCAN   = False # Display MACs of the SSIDs in the list of targets
 
 # Console colors
 W  = '\033[0m'  # white (normal)
@@ -374,7 +372,7 @@ def handle_args():
 	global WPA_HANDSHAKE_AIRCRACK, WPA_HANDSHAKE_COWPATTY
 	global WEP_DISABLE, WEP_PPS, WEP_TIMEOUT, WEP_ARP_REPLAY, WEP_CHOPCHOP, WEP_FRAGMENT
 	global WEP_CAFFELATTE, WEP_P0841, WEP_HIRTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
-	global WEP_SAVE, WPS_DISABLE
+	global WEP_SAVE, WPS_DISABLE, SHOW_MAC_IN_SCAN
 	
 	args = argv[1:]
 	if args.count('-h') + args.count('--help') + args.count('?') + args.count('-help') > 0:
@@ -428,6 +426,10 @@ def handle_args():
 				try: TARGET_BSSID = args[i]
 				except ValueError: print R+' [!]'+O+' no BSSID given!'+W
 				else: print GR+' [+]'+W+' targeting BSSID "%s"' % (G+args[i]+W)
+			elif args[i] == '-showb' or args[i] == '-showbssid':
+				SHOW_MAC_IN_SCAN = True
+				print GR+' [+]'+W+' target MAC address viewing '+G+'enabled'+W
+
 			
 			elif args[i] == '-check':
 				i += 1
@@ -541,6 +543,7 @@ def handle_args():
 	
 	if capfile != '':
 		analyze_capfile(capfile)
+	print ''
 
 def banner():
 	""" 
@@ -578,6 +581,7 @@ def help():
 	print sw+'\t-c '+var+'<channel>\t'+des+'channel to scan for targets      '+de+'[auto]'+W
 	print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name) '+de+'[ask]'+W
 	print sw+'\t-b '+var+'<bssid>  \t'+des+'target a specific access point by bssid (mac) '+de+'[auto]'+W
+	print sw+'\t-showb             \t'+des+'display target BSSIDs after scan [off]'+W
 	print ''
 	
 	print head+'\n   WPA'+W
@@ -859,10 +863,11 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	targets = sorted(targets, key=lambda t: t.power, reverse=True)
 	
 	victims = []
-	print "   NUM ESSID                ENCR  POWER  WPS?  CLIENT"
-	print '   --- -------------------- ----  -----  ----  ------'
+	print "   NUM ESSID                 %sCH  ENCR  POWER  WPS?  CLIENT" % ('BSSID              ' if SHOW_MAC_IN_SCAN else '')
+	print '   --- --------------------  %s--  ----  -----  ----  ------' % ('-----------------  ' if SHOW_MAC_IN_SCAN else '')
 	for i, target in enumerate(targets):
 		print "   %s%2d%s " % (G, i + 1, W),
+		# SSID
 		if target.ssid == '':
 			p = O+'('+target.bssid+')'+GR+' '+W
 			print '%s' % p.ljust(20),
@@ -870,18 +875,26 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 			print "%s" % C+target.ssid.ljust(20)+W,
 		else:
 			print "%s" % C+target.ssid[0:17] + '...'+W,
+		# BSSID
+		if SHOW_MAC_IN_SCAN:
+			print O,target.bssid+W,
+		# Channel
+		print G,target.channel.rjust(2),W,
+		# Encryption
 		if target.encryption.find("WEP") != -1: print G,
 		else:                                   print O,
 		print "\b%3s" % target.encryption.strip().ljust(4) + W,
+		# Power
 		if target.power >= 55:   col = G
 		elif target.power >= 40: col = O
 		else:                    col = R
 		print "%s%3ddb%s" % (col,target.power, W),
-		# if target.encryption.startswith('WEP'): print O+"  n/a"+W,
+		# WPS
 		if WPS_DISABLE:
 			print "  %3s" % (O+'n/a'+W),
 		else:
 			print "  %3s" % (G+'wps'+W if target.wps else R+' no'+W),
+		# Clients
 		client_text = ''
 		for c in clients:
 			if c.station == target.bssid: 
