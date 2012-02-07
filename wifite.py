@@ -28,12 +28,12 @@
 	 * ability to pause/skip/continue	 
 	 * Option to capture only IVS packets (uses --output-format ivs,csv)
 	   - not compatible on older aircrack-ng's.
+		   - Just run "airodump-ng --output-format ivs,csv", "No interface specified" = works
 		 - would cut down on size of saved .caps
 	 
-	 * reaver:
+	 reaver:
 	 	 MONITOR ACTIVITY!
-	 	 - Enter ESSID when executing
-	 	 - Count PINs tried
+	 	 - Enter ESSID when executing (?)
 	   - Ensure WPS key attempts have begun. 
 	   - If no attempts can be made, stop attack
 	   
@@ -41,9 +41,7 @@
 	   
 	   - Reaver's output when unable to associate:
 	     [!] WARNING: Failed to associate with AA:BB:CC:DD:EE:FF (ESSID: ABCDEF)
-	   - If failed to associate for x minutes, stop attack
-	   
-	   - slowly increase fail-wait (-x) by 30seconds each failure.
+	   - If failed to associate for x minutes, stop attack (same as no attempts?)
 	
 	MIGHTDO:
 	  * WPA - crack (pyrit/cowpatty) (not really important)
