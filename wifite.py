@@ -151,8 +151,8 @@ GR = '\033[37m' # gray
 
 
 if os.getuid() != 0:
-	print O+' [!]'+R+' ERROR:'+G+' wifite'+W+' must be run as '+O+'root'+W
-	print O+' [!]'+W+' login as root or try "sudo ./wifite.py"'
+	print R+' [!]'+O+' ERROR:'+G+' wifite'+O+' must be run as '+R+'root'+W
+	print R+' [!]'+O+' login as root ('+W+'su root'+O+') or try '+W+'sudo ./wifite.py'+W
 	exit(1)
 
 if not os.uname()[0].startswith("Linux"):
@@ -231,9 +231,6 @@ def main():
 
 	handle_args() # Parse args from command line, set global variables.
 	
-	if not program_exists('reaver'):
-		print O+' [!]'+R+' the program '+O+'reaver'+R+' is required for WPS attacks'+W
-		print O+' [!]'+R+' reaver is available at: '+C+'http://code.google.com/p/reaver-wps/\n'
 	
 	# The "get_iface" method anonymizes the MAC address (if needed)
 	# and puts the interface into monitor mode.
@@ -352,7 +349,7 @@ def initial_check():
 	# Check reaver
 	if not program_exists('reaver'):
 		printed = True
-		print R+' [!]'+O+' WPS attacks disabled: '+R+'reaver'+O+' not found'+W
+		print R+' [!]'+O+' the program '+R+'reaver'+O+' is required for WPS attacks'+W
 		print R+'    '+O+'   available at '+C+'http://code.google.com/p/reaver-wps'+W
 		WPS_DISABLE = True
 	elif not program_exists('walsh') and not program_exists('wash'):
@@ -697,8 +694,8 @@ def get_iface():
 		monitors.append(line)
 	
 	if len(monitors) == 0:
-		print O+' [!]'+R+" no wireless interfaces were found."+W
-		print O+' [!]'+R+" you need to plug in a wifi device or install drivers."+W
+		print R+' [!]'+O+" no wireless interfaces were found."+W
+		print R+' [!]'+O+" you need to plug in a wifi device or install drivers.\n"+W
 		exit_gracefully(0)
 	elif WIRELESS_IFACE != '' and monitors.count(WIRELESS_IFACE) > 0:
 		mac_anonymize(monitor)
@@ -836,8 +833,9 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 			      G+str(len(targets))+W, '' if len(targets) == 1 else 's', 
 			      G+str(len(clients))+W, '' if len(clients) == 1 else 's'),
 			stdout.flush()
-	except KeyboardInterrupt: print ''
-	else: print ''
+	except KeyboardInterrupt:
+		pass
+	print ''
 	
 	send_interrupt(proc)
 	try: os.kill(proc.pid, SIGTERM)
@@ -1032,8 +1030,8 @@ def rtl8187_fix(iface):
 	
 	if not using_rtl8187: 
 		# Display error message and exit
-		print O+'[!]'+R+' unable to generate airodump-ng CSV file'+W
-		print O+'[!]'+R+' you may want to disconnect/reconnect your wifi device'+W
+		print R+' [!]'+O+' unable to generate airodump-ng CSV file'+W
+		print R+' [!]'+O+' you may want to disconnect/reconnect your wifi device'+W
 		exit_gracefully(1)
 	
 	print O+" [!]"+W+" attempting "+O+"RTL8187 'Unknown Error 132'"+W+" fix..."
@@ -1739,7 +1737,7 @@ def has_handshake(target, capfile):
 		valid_handshake = has_handshake_aircrack(target, capfile)
 	
 	if tried: return valid_handshake
-	print O+' [!]'+R+' unable to check for handshake: all handshake options are disabled!'
+	print R+' [!]'+O+' unable to check for handshake: all handshake options are disabled!'
 	exit_gracefully(1)
 
 
@@ -1767,7 +1765,7 @@ def strip_handshake(capfile):
 		os.rename(capfile + '.temp', output_file)
 		
 	else:
-		print O+" [!]"+R+" unable to strip .cap file: neither pyrit nor tshark were found"+W
+		print R+" [!]"+O+" unable to strip .cap file: neither pyrit nor tshark were found"+W
 
 
 
@@ -1917,7 +1915,8 @@ def attack_wep(iface, target, clients):
 	       '--bssid', target.bssid,
 	       iface]
 	proc_airodump = Popen(cmd, stdout=DN, stderr=DN)
-	
+	proc_aireplay = None
+
 	successful       = False # Flag for when attack is successful
 	started_cracking = False # Flag for when we have started aircrack-ng
 	client_mac       = ''    # The client mac we will send packets to/from
