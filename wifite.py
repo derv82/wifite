@@ -1342,12 +1342,12 @@ def get_bssid_from_cap(essid, capfile):
 		if line.endswith('Key (msg 1/4)') or line.endswith('Key (msg 3/4)'):
 			while line.startswith(' ') or line.startswith('\t'): line = line[1:]
 			line = line.replace('\t', ' ')
-			line = line.replace('  ', ' ')
+			while line.find('  ') != -1: line = line.replace('  ', ' ')
 			return line.split(' ')[2]
 		elif line.endswith('Key (msg 2/4)') or line.endswith('Key (msg 4/4)'):
 			while line.startswith(' ') or line.startswith('\t'): line = line[1:]
 			line = line.replace('\t', ' ')
-			line = line.replace('  ', ' ')
+			while line.find('  ') != -1: line = line.replace('  ', ' ')
 			return line.split(' ')[4]
 	return ''
 
