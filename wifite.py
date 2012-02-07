@@ -10,7 +10,8 @@
 	TODO:
 	 * Show Channel (CH) column when displaying targets
 	 * Show BSSId as well? (too wide? make it a switch)
-
+	 * Target networks with power > X db
+	
 	 Remember cracked access points
 	 * Store in human-readable text file? database?
 	 * Option for "-cracked" to display list of cracked access points?
@@ -282,7 +283,7 @@ def main():
 				need_handshake = not wps_attack(iface, t)
 				wpa_total += 1
 			
-			if not need_handshake: wps_success += 1
+			if not need_handshake: wpa_success += 1
 			
 			if not WPA_DISABLE and need_handshake:
 				wpa_total += 1
@@ -2315,10 +2316,10 @@ def wps_attack(iface, target):
 	       '-b', target.bssid,
 	       '-o', temp + 'out.out',
 	       '-a',  # auto-detect best options, also auto-resumes sessions
-				 '-c', target.channel,
+	       '-c', target.channel,
 	       # '--ignore-locks',
 	       '-vv']  # semi-verbose output
-	print ' '.join(cmd)
+	#print ' '.join(cmd)
 	proc = Popen(cmd, stdout=DN, stderr=DN)
 	cracked = False
 	percent = 'x.xx%'
@@ -2381,8 +2382,8 @@ def wps_attack(iface, target):
 						if line.find("[+] WPA PSK: '") != -1:
 							key = line[14:-1]
 							cracked = True
-				if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
-				if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
+				# if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
+				# if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
 				
 				print ' %s WPS attack, %s tries/att,' % \
 				            (GR+sec_to_hms(time.time()-time_started)+W, \
