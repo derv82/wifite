@@ -11,17 +11,18 @@
 	 * Target networks with power > X db
 	
 	 Remember cracked access points
-	 * Store in human-readable text file? database?
-	 * Option for "-cracked" to display list of cracked access points?
-	 * Need to be able to load cracked BSSID's into list, keep there.
-	 * "SSID has already been cracked (key=<KEY>), do you want to crack again?
-
+	 * Option for "-cracked" to display list of cracked access points
+	
+	 When ctrl+c is pressed during attack, ask if user wants to exit immediately
+	   - if htey ctrl+c again, exit!
+	
 	 WPS
 	 * Mention reaver automatically resumes sessions
 	 * Warning about length of time required for WPS attack (*hours*)
 	 * Show time since last successful attempt
 	 * Percentage of tries/attempts ?
-	 
+	 * Update code to work with reaver 1.4 ("x" sec/att)
+
 	 WEP:
 	 * ability to pause/skip/continue	 
 	 * Option to capture only IVS packets (uses --output-format ivs,csv)
@@ -134,6 +135,8 @@ TARGETS_REMAINING  = 0  # Number of access points remaining to attack
 WPA_CAPS_TO_CRACK  = [] # list of .cap files to crack (full of CapFile objects)
 THIS_MAC           = '' # The interfaces current MAC address.
 SHOW_MAC_IN_SCAN   = False # Display MACs of the SSIDs in the list of targets
+CRACKED_TARGETS    = [] # List of targets we have already cracked
+
 
 # Console colors
 W  = '\033[0m'  # white (normal)
@@ -194,7 +197,8 @@ class Target:
 		self.encryption = encryption
 		self.ssid = ssid
 		self.wps = False # Default to non-WPS-enabled router.
-	
+		self.key = ''
+
 class Client:
 	"""
 		Holds data for a Client (device connected to Access Point/Router)
@@ -221,12 +225,13 @@ def main():
 	"""
 		Where the magic happens.
 	"""
-	global TARGETS_REMAINING, THIS_MAC
+	global TARGETS_REMAINING, THIS_MAC, CRACKED_TARGETS
 	
 	initial_check() # Ensure required programs are installed.
+	
+	CRACKED_TARGETS = load_cracked() # Load previously-cracked APs from file
 
 	handle_args() # Parse args from command line, set global variables.
-	
 	
 	# The "get_iface" method anonymizes the MAC address (if needed)
 	# and puts the interface into monitor mode.
@@ -237,19 +242,40 @@ def main():
 	(targets, clients) = scan(iface=iface, channel=TARGET_CHANNEL)
 	
 	try:
-		# Check if handshakes already exist, ask user whether to skip targets or save new handshakes
-		for target in targets:
+		index = 0
+		while index < len(targets):
+			target = targets[index]
+			# Check if we have already cracked this target
+			for already in CRACKED_TARGETS:
+				if already.bssid == targets[index].bssid:
+					print R+'\n [!]'+O+' you have already cracked this access point\'s key!'+W
+					print R+' [!] %s' % (C+already.ssid+W+': "'+G+already.key+W+'"')
+					ri = raw_input(GR+' [+] '+W+'do you want to crack this access point again? ('+G+'y/'+O+'n'+W+'): ')
+					if ri.lower() == 'n':
+						targets.pop(index)
+						index -= 1
+						break
+
+			# Check if handshakes already exist, ask user whether to skip targets or save new handshakes
 			handshake_file = WPA_HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) \
 			                 + '_' + target.bssid.replace(':', '-') + '.cap'
 			if os.path.exists(handshake_file):
 				print R+'\n [!] '+O+'you already have a handshake file for %s:' % (C+target.ssid+W)
 				print '        %s\n' % (G+handshake_file+W)
 				print GR+' [+]'+W+' do you want to '+G+'[s]kip'+W+', '+O+'[c]apture again'+W+', or '+R+'[o]verwrite'+W+'?'
-				ri = raw_input(' [+] enter '+G+'s'+W+', '+O+'c,'+W+' or '+R+'o'+W+': '+G)
+				ri = 'x'
+				while ri != 's' and ri != 'c' and ri != 'o': 
+					ri = raw_input(GR+' [+] '+W+'enter '+G+'s'+W+', '+O+'c,'+W+' or '+R+'o'+W+': '+G)
 				print W+"\b",
-				while ri != 's' and ri != 'c' and ri != 'o': pass
-				if ri == 's': targets.remove(target)
-				elif ri == 'o': remove_file(handshake_file)
+				if ri == 's': 
+					targets.pop(index)
+					index -= 1
+				elif ri == 'o': 
+					remove_file(handshake_file)
+					continue
+			index += 1
+			
+
 	except KeyboardInterrupt:
 		print ''
 		exit_gracefully(0)
@@ -308,10 +334,9 @@ def main():
 				print '        ' + C+finding+W
 		
 		if wep_total > 0:
-			print ' [+]',
-			if wep_success == 0:           print R,
-			elif wep_success == wep_total: print G,
-			else:                          print O,
+			if wep_success == 0:           print ' [+]'+R,
+			elif wep_success == wep_total: print ' [+]'+G,
+			else:                          print ' [+]'+O,
 			print '%d/%d%s WEP attacks succeeded' % (wep_success, wep_total, W)
 		
 			for finding in WEP_FINDINGS:
@@ -444,7 +469,17 @@ def handle_args():
 						print R+' [!]'+O+' file not found: '+R+capfile+'\n'+W
 						exit_gracefully(1)
 					
-			
+			elif args[i] == '-cracked':
+				if len(CRACKED_TARGETS) == 0:
+					print R+' [!]'+O+' there are not cracked access points saved to '+R+'cracked.txt'+W
+					exit_gracefully(1)
+				print GR+' [+]'+W+' '+G+'previously cracked access points'+W+':'
+				for victim in CRACKED_TARGETS:
+					print '     %s (%s) : "%s"' % (C+victim.ssid+W, C+victim.bssid+W, G+victim.key+W)
+				print ''
+				exit_gracefully(0)
+					
+
 			# WPA
 			if not set_hscheck and (args[i] == '-tshark' or args[i] == '-cowpatty' or args[i] == '-aircrack' or args[i] == 'pyrit'):
 				WPA_HANDSHAKE_TSHARK   = False
@@ -574,14 +609,16 @@ def help():
 	de      = G
 	
 	print head+'   COMMANDS'+W
-	print sw+'\t-check '+var+'<file>\t'+des+'check capfile <file> for handshakes. prints results\n'+W
+	print sw+'\t-check '+var+'<file>\t'+des+'check capfile '+var+'<file>'+des+' for handshakes.'+W
+	print sw+'\t-cracked    \t'+des+'display previously-cracked access points'+W
+	print ''
 
 	print head+'   GLOBAL'+W
 	print sw+'\t-i '+var+'<iface>  \t'+des+'wireless interface for capturing '+de+'[auto]'+W
 	print sw+'\t-c '+var+'<channel>\t'+des+'channel to scan for targets      '+de+'[auto]'+W
 	print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name) '+de+'[ask]'+W
 	print sw+'\t-b '+var+'<bssid>  \t'+des+'target a specific access point by bssid (mac) '+de+'[auto]'+W
-	print sw+'\t-showb             \t'+des+'display target BSSIDs after scan [off]'+W
+	print sw+'\t-showb       \t'+des+'display target BSSIDs after scan '+de+'[off]'+W
 	print ''
 	
 	print head+'\n   WPA'+W
@@ -879,7 +916,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 		if SHOW_MAC_IN_SCAN:
 			print O,target.bssid+W,
 		# Channel
-		print G,target.channel.rjust(2),W,
+		print G+target.channel.rjust(3),W,
 		# Encryption
 		if target.encryption.find("WEP") != -1: print G,
 		else:                                   print O,
@@ -1144,6 +1181,7 @@ def sec_to_hms(sec):
 	"""
 		Converts integer sec to h:mm:ss format
 	"""
+	if sec <= -1: return '[endless]'
 	h = sec / 3600
 	sec %= 3600
 	m  = sec / 60
@@ -1410,7 +1448,9 @@ def wpa_get_handshake(iface, target, clients):
 			"clients" - List of Client objects associated with the target
 		Returns True if handshake was found, False otherwise
 	"""
-	global TARGETS_REMAINING
+	global TARGETS_REMAINING, WPA_ATTACK_TIMEOUT
+
+	if WPA_ATTACK_TIMEOUT <= 0: WPA_ATTACK_TIMEOUT = -1
 	
 	# Generate the filename to save the .cap file as <SSID>_aa-bb-cc-dd-ee-ff.cap
 	save_as = WPA_HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) \
@@ -1783,6 +1823,34 @@ def strip_handshake(capfile):
 		print R+" [!]"+O+" unable to strip .cap file: neither pyrit nor tshark were found"+W
 
 
+def save_cracked(bssid, ssid, key, encryption):
+	"""
+		Saves cracked access point key and info to a file.
+	"""
+	sep = chr(0)
+	fout = open('cracked.txt', 'a')
+	fout.write(bssid + sep + ssid + sep + key + sep + encryption + '\n')
+	fout.flush()
+	fout.close()
+
+
+def load_cracked():
+	"""
+		Loads info about cracked access points into list, returns list.
+	"""
+	result = []
+	fin = open('cracked.txt', 'r')
+	lines = fin.read().split('\n')
+	fin.close()
+	
+	for line in lines:
+		fields = line.split(chr(0))
+		if len(fields) <= 3: continue
+		tar = Target(fields[0], '', '', '', fields[3], fields[1])
+		tar.key = fields[2]
+		result.append(tar)
+	return result
+
 
 ##########################
 # WPA CRACKING FUNCTIONS #
@@ -1828,6 +1896,8 @@ def wpa_crack(capfile):
 					WPA_FINDINGS.append('cracked wpa key for "%s" (%s): "%s"' % (G+capfile.ssid+W, G+capfile.bssid+W, C+key+W))
 					WPA_FINDINGS.append('')
 					
+					save_cracked(capfile.bssid, capfile.ssid, key, 'WPA')
+
 					print GR+'\n [+]'+W+' cracked %s (%s)!' % (G+capfile.ssid+W, G+capfile.bssid+W)
 					print GR+' [+]'+W+' key:    "%s"\n' % (C+key+W)
 					cracked = True
@@ -1903,6 +1973,8 @@ def attack_wep(iface, target, clients):
 		Attacks WEP-encrypted network.
 		Returns True if key was successfully found, False otherwise.
 	"""
+	global WEP_TIMEOUT
+	if WEP_TIMEOUT <= 0: WEP_TIMEOUT = -1
 	
 	total_attacks = 6 # 4 + (2 if len(clients) > 0 else 0)
 	if not WEP_ARP_REPLAY: total_attacks -= 1
@@ -1966,7 +2038,7 @@ def attack_wep(iface, target, clients):
 			if cmd == '': continue
 			proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
 			
-			print ' %s attacking "%s" via' % (GR+sec_to_hms(WEP_TIMEOUT)+W, G+target.ssid+W),
+			print '\r %s attacking "%s" via' % (GR+sec_to_hms(WEP_TIMEOUT)+W, G+target.ssid+W),
 			if attack_num == 0:   print G+'arp-replay',
 			elif attack_num == 1: print G+'chop-chop',
 			elif attack_num == 2: print G+'fragmentation',
@@ -1990,8 +2062,10 @@ def attack_wep(iface, target, clients):
 				time.sleep(5)
 				
 				# Calculates total seconds remaining
-				#current_hms = sec_to_hms(WEP_TIMEOUT * (total_attacks - attack_num) - (time.time() - time_started))
-				current_hms = sec_to_hms(WEP_TIMEOUT - (time.time() - time_started))
+				if WEP_TIMEOUT == -1:
+					current_hms = "[endless]"
+				else: 
+					current_hms = sec_to_hms(WEP_TIMEOUT - (time.time() - time_started))
 				
 				# Check number of IVs captured
 				csv = parse_csv(temp + 'wep-01.csv')[0]
@@ -2003,7 +2077,7 @@ def attack_wep(iface, target, clients):
 					if ivs - last_ivs == 0 and time.time() - last_deauth > 30:
 						print "\r %s deauthing to generate packets..." % (GR+current_hms+W),
 						wep_send_deauths(iface, target, clients)
-						print "done"
+						print "done",
 						last_deauth = time.time()
 
 					last_ivs = ivs
@@ -2014,7 +2088,7 @@ def attack_wep(iface, target, clients):
 						       '-a', '1',
 						       '-l', temp + 'wepkey.txt',
 						       temp + 'wep-01.cap']
-						print "\r %s starting %s (%sover %d ivs%s)" % (GR+current_hms+W, G+'cracker'+W, G, WEP_CRACK_AT_IVS, W)
+						print "\r %s startegd %s (%sover %d ivs%s)" % (GR+current_hms+W, G+'cracking'+W, G, WEP_CRACK_AT_IVS, W)
 						proc_aircrack = Popen(cmd, stdout=DN, stderr=DN)
 						started_cracking = True
 				
@@ -2028,6 +2102,8 @@ def attack_wep(iface, target, clients):
 					WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (target.ssid, target.bssid, key))
 					WEP_FINDINGS.append('')
 					
+					save_cracked(target.bssid, target.ssid, key, 'WEP')
+
 					# Kill processes
 					send_interrupt(proc_airodump)
 					send_interrupt(proc_aireplay)
@@ -2113,6 +2189,8 @@ def attack_wep(iface, target, clients):
 				WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (target.ssid, target.bssid, key))
 				WEP_FINDINGS.append('')
 				
+				save_cracked(target.bssid, target.ssid, key, 'WEP')
+
 				# Kill processes
 				send_interrupt(proc_airodump)
 				send_interrupt(proc_aireplay)
@@ -2136,7 +2214,7 @@ def attack_wep(iface, target, clients):
 	if successful:
 		print GR+'\n [0:00:00]'+W+' attack complete: '+G+'success!'+W
 	else:
-		print GR+'\n [0:00:00]'+W+' attack complete: '+R+'failed'+W
+		print GR+'\n [0:00:00]'+W+' attack complete: '+R+'failure'+W
 	
 	send_interrupt(proc_airodump)
 	if proc_aireplay != None:
@@ -2397,12 +2475,10 @@ def wps_attack(iface, target):
 						# When it's cracked:
 						if line.find("[+] WPS PIN: '") != -1:
 							pin = line[14:-1]
-							cracked = True
 						if line.find("[+] WPA PSK: '") != -1:
 							key = line[14:-1]
 							cracked = True
-				# if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
-				# if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
+					if cracked: break
 				
 				print ' %s WPS attack, %s tries/att,' % \
 				            (GR+sec_to_hms(time.time()-time_started)+W, \
@@ -2439,8 +2515,12 @@ def wps_attack(iface, target):
 				break
 		
 		if cracked:
+			if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
+			if key != '': print GR+' [+] %sWPA key found%s: "%s"' % (G, W, C+key+W)
 			WPA_FINDINGS.append(W+"found %s's WPA key: \"%s\", WPS PIN: %s" % (G+target.ssid+W, C+key+W, C+pin+W))
 			WPA_FINDINGS.append('')
+
+			save_cracked(target.bssid, "Key is '" + target.ssid, key + "' and PIN is '" + pin + "'", 'WPA')
 		
 	except KeyboardInterrupt:
 		print R+'\n (^C)'+O+' WPS brute-force attack interrupted'+W
