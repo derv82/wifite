@@ -93,10 +93,10 @@ if not os.path.exists(WPA_DICTIONARY): WPA_DICTIONARY = ''
 # Various programs to use when checking for a four-way handshake.
 # True means the program must find a valid handshake in order for wifite to recognize a handshake.
 # Not finding handshake short circuits result (ALL 'True' programs must find handshake)
-WPA_HANDSHAKE_TSHARK   = False # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
+WPA_HANDSHAKE_TSHARK   = True  # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
 WPA_HANDSHAKE_PYRIT    = False # Sometimes crashes on incomplete dumps, but accurate.
 WPA_HANDSHAKE_AIRCRACK = True  # Not 100% accurate, but fast.
-WPA_HANDSHAKE_COWPATTY = True  # Uses more lenient "nonstrict mode" (-2)
+WPA_HANDSHAKE_COWPATTY = False # Uses more lenient "nonstrict mode" (-2)
 
 
 
@@ -473,7 +473,7 @@ def handle_args():
 				if len(CRACKED_TARGETS) == 0:
 					print R+' [!]'+O+' there are not cracked access points saved to '+R+'cracked.txt'+W
 					exit_gracefully(1)
-				print GR+' [+]'+W+' '+G+'previously cracked access points'+W+':'
+				print GR+' [+]'+W+' '+W+'previously cracked access points'+W+':'
 				for victim in CRACKED_TARGETS:
 					print '     %s (%s) : "%s"' % (C+victim.ssid+W, C+victim.bssid+W, G+victim.key+W)
 				print ''
@@ -629,25 +629,25 @@ def help():
 	print sw+'\t-crack '+var+'<dic>\t'+des+'crack WPA handshakes using '+var+'<dic>'+des+' wordlist file    '+de+'[off]'+W
 	print sw+'\t-dict '+var+'<file>\t'+des+'specify dictionary to use when cracking WPA '+de+'[phpbb.txt]'+W
 	print sw+'\t-aircrack   \t'+des+'verify handshake using aircrack '+de+'[on]'+W
-	print sw+'\t-pyrit      \t'+des+'verify handshake using pyrit    '+de+'[on]'+W
-	print sw+'\t-tshark     \t'+des+'verify handshake using tshark   '+de+'[off]'+W
+	print sw+'\t-pyrit      \t'+des+'verify handshake using pyrit    '+de+'[off]'+W
+	print sw+'\t-tshark     \t'+des+'verify handshake using tshark   '+de+'[on]'+W
 	print sw+'\t-cowpatty   \t'+des+'verify handshake using cowpatty '+de+'[off]'+W
 	
 	print head+'\n   WEP'+W
 	print sw+'\t-wep        \t'+des+'only target WEP networks '+de+'[off]'+W
 	print sw+'\t-pps '+var+'<num>  \t'+des+'set the number of packets per second to inject '+de+'[600]'+W
-	print sw+'\t-wept '+var+'<sec> \t'+des+'sec to wait for *each* WEP attack to complete  '+de+'[600]'+W
+	print sw+'\t-wept '+var+'<sec> \t'+des+'sec to wait for each attack, 0 implies endless '+de+'[600]'+W
 	print sw+'\t-chopchop   \t'+des+'use chopchop attack      '+de+'[on]'+W
 	print sw+'\t-arpreplay  \t'+des+'use arpreplay attack     '+de+'[on]'+W
 	print sw+'\t-fragment   \t'+des+'use fragmentation attack '+de+'[on]'+W
 	print sw+'\t-caffelatte \t'+des+'use caffe-latte attack   '+de+'[on]'+W
 	print sw+'\t-p0841      \t'+des+'use -p0841 attack        '+de+'[on]'+W
 	print sw+'\t-hirte      \t'+des+'use hirte (cfrag) attack '+de+'[on]'+W
-	print sw+'\t-nofakeauth \t'+des+'stop attack if fake authentication fails '+de+'[off]'+W
+	print sw+'\t-nofakeauth \t'+des+'stop attack if fake authentication fails    '+de+'[off]'+W
 	print sw+'\t-wepca '+GR+'<n>  \t'+des+'start cracking when number of ivs surpass n '+de+'[10000]'+W
 	
 	print head+'\n   EXAMPLE'+W
-	print sw+'\t./wifite.py '+W+'-wps -wep -c 6 -p 600'+W
+	print sw+'\t./wifite.py '+W+'-wps -wep -c 6 -pps 600'+W
 	print ''
 
 
@@ -1035,7 +1035,7 @@ def wps_check_targets(targets, cap_file):
 	program_name = 'walsh' if program_exists('walsh') else 'wash'
 	
 	if len(targets) == 0 or not os.path.exists(cap_file): return
-	print ' [+] checking for '+G+'WPS compatibility'+W+'...',
+	print GR+' [+]'+W+' checking for '+G+'WPS compatibility'+W+'...',
 	
 	cmd = [program_name,
 	       '-f', cap_file,
@@ -1992,7 +1992,7 @@ def attack_wep(iface, target, clients):
 	           (GR+sec_to_hms(WEP_TIMEOUT)+W, \
 	           G+target.ssid+W, G+target.bssid+W)
 	
-	remove_airodump_files('wep')
+	remove_airodump_files(temp + 'wep')
 	remove_file(temp + 'wepkey.txt')
 	
 	# Start airodump process to capture packets
@@ -2059,18 +2059,23 @@ def attack_wep(iface, target, clients):
 			replaying = False
 			time_started = time.time()
 			while time.time() - time_started < WEP_TIMEOUT:
-				time.sleep(5)
-				
+				# time.sleep(5)
+				for time_count in xrange(0, 6):
+					if WEP_TIMEOUT == -1:
+						current_hms = "[endless]"
+					else: 
+						current_hms = sec_to_hms(WEP_TIMEOUT - (time.time() - time_started))
+					print "\r %s\r" % (GR+current_hms+W),
+					stdout.flush()
+					time.sleep(1)
+					
 				# Calculates total seconds remaining
-				if WEP_TIMEOUT == -1:
-					current_hms = "[endless]"
-				else: 
-					current_hms = sec_to_hms(WEP_TIMEOUT - (time.time() - time_started))
 				
 				# Check number of IVs captured
 				csv = parse_csv(temp + 'wep-01.csv')[0]
 				if len(csv) > 0:
 					ivs = int(csv[0].data)
+					print "\r                                                   ",
 					print "\r %s captured %s%d%s ivs @ %s%d%s iv/sec" % \
 					          (GR+current_hms+W, G, ivs, W, G, (ivs - last_ivs) / 5, W),
 
@@ -2088,7 +2093,7 @@ def attack_wep(iface, target, clients):
 						       '-a', '1',
 						       '-l', temp + 'wepkey.txt',
 						       temp + 'wep-01.cap']
-						print "\r %s startegd %s (%sover %d ivs%s)" % (GR+current_hms+W, G+'cracking'+W, G, WEP_CRACK_AT_IVS, W)
+						print "\r %s started %s (%sover %d ivs%s)" % (GR+current_hms+W, G+'cracking'+W, G, WEP_CRACK_AT_IVS, W)
 						proc_aircrack = Popen(cmd, stdout=DN, stderr=DN)
 						started_cracking = True
 				
@@ -2111,7 +2116,8 @@ def attack_wep(iface, target, clients):
 					except: pass
 					send_interrupt(proc_aircrack)
 					# Remove files generated by airodump/aireplay/packetforce
-					remove_airodump_files('wep')
+					time.sleep(0.5)
+					remove_airodump_files(temp + 'wep')
 					remove_file(temp + 'wepkey.txt')
 					return True
 				
@@ -2196,7 +2202,7 @@ def attack_wep(iface, target, clients):
 				send_interrupt(proc_aireplay)
 				send_interrupt(proc_aircrack)
 				# Remove files generated by airodump/aireplay/packetforce
-				remove_airodump_files('wep')
+				remove_airodump_files(temp + 'wep')
 				remove_file(temp + 'wepkey.txt')
 				return True
 		
@@ -2224,7 +2230,7 @@ def attack_wep(iface, target, clients):
 	for filename in os.listdir('.'):
 		if filename.startswith('replay_arp-') and filename.endswith('.cap'):
 			remove_file(filename)
-	remove_airodump_files('wep')
+	remove_airodump_files(temp + 'wep')
 	remove_file(temp + 'wepkey.txt')
 
 
