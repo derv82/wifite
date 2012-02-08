@@ -14,7 +14,7 @@
 	 * Option for "-cracked" to display list of cracked access points
 	
 	 When ctrl+c is pressed during attack, ask if user wants to exit immediately
-	   - if htey ctrl+c again, exit!
+	   - if they ctrl+c again, exit!
 	
 	 WPS
 	 * Mention reaver automatically resumes sessions
@@ -2413,7 +2413,7 @@ def wps_attack(iface, target):
 		return False
 	"""
 	
-	print GR+' [0:00:00]'+W+' initializing %sWPS PIN attack%s on %s' % (G, W, G+target.ssid+W)
+	print GR+' [0:00:00]'+W+' initializing %sWPS PIN attack%s on %s' % (G, W, G+target.ssid+W+' ('+G+target.bssid+W+')'+W)
 	
 	cmd = ['reaver',
 	       '-i', iface,
@@ -2450,7 +2450,7 @@ def wps_attack(iface, target):
 					if line.find(' complete @ ') != -1 and len(line) > 8:
 						percent = line.split(' ')[1]
 						i = line.find(' (')
-						j = line.find(' seconds/attempt', i)
+						j = line.find(' seconds/', i)
 						if i != -1 and j != -1: aps = line[i+2:j]
 					# PIN attempt
 					elif line.find(' Trying pin ') != -1:
@@ -2487,13 +2487,13 @@ def wps_attack(iface, target):
 							cracked = True
 					if cracked: break
 				
-				print ' %s WPS attack, %s tries/att,' % \
+				print ' %s WPS attack, %s tries/atts,' % \
 				            (GR+sec_to_hms(time.time()-time_started)+W, \
 				            G+str(tries)+W+'/'+O+str(attempts)+W),
 
 				if percent == 'x.xx%': print '\r',
 				else:
-					print '%s complete (%s sec/att)   \r' % (G+percent+W, G+aps+W),
+					print '%s complete (%s secs/pin)   \r' % (G+percent+W, G+aps+W),
 				
 				stdout.flush()
 				inf = open(temp + 'out.out', 'w')
