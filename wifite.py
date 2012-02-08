@@ -1839,6 +1839,7 @@ def load_cracked():
 		Loads info about cracked access points into list, returns list.
 	"""
 	result = []
+	if not os.path.exists('cracked.txt'): return result
 	fin = open('cracked.txt', 'r')
 	lines = fin.read().split('\n')
 	fin.close()
