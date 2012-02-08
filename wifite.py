@@ -2496,8 +2496,8 @@ def wps_attack(iface, target):
 				
 				stdout.flush()
 				# Clear out output file if bigger than 1mb
-				# inf = open(temp + 'out.out', 'w')
-				#inf.close()
+				inf = open(temp + 'out.out', 'w')
+				inf.close()
 			
 			if proc.poll() != None:
 				# Process stopped: Cracked? Failed? 
