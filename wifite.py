@@ -2435,6 +2435,8 @@ def wps_attack(iface, target):
 	retries  = 0
 	attempts = 0
 	tries    = 0
+	pin = ''
+	key = ''
 	try:
 		while not cracked:
 			time.sleep(1)
@@ -2475,15 +2477,11 @@ def wps_attack(iface, target):
 					elif line.endswith('10 failed connections in a row'):
 						pass
 					# Check for PIN/PSK
-					pin = ''
-					key = ''
-					for line in lines:
-						# When it's cracked:
-						if line.find("WPS PIN: '") != -1:
-							pin = line[line.find("WPS PIN: '") + 10:-1]
-						if line.find("WPA PSK: '") != -1:
-							key = line[line.find("WPA PSK: '") + 10:-1]
-							cracked = True
+					elif line.find("WPS PIN: '") != -1:
+						pin = line[line.find("WPS PIN: '") + 10:-1]
+					elif line.find("WPA PSK: '") != -1:
+						key = line[line.find("WPA PSK: '") + 10:-1]
+						cracked = True
 					if cracked: break
 				
 				print ' %s WPS attack, %s tries/atts,' % \
@@ -2504,8 +2502,6 @@ def wps_attack(iface, target):
 				inf = open(temp + 'out.out', 'r')
 				lines = inf.read().split('\n')
 				inf.close()
-				pin = ''
-				key = ''
 				for line in lines:
 					# When it's cracked:
 					if line.find("WPS PIN: '") != -1:
