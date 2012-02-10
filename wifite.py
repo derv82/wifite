@@ -118,25 +118,27 @@ WEP_SAVE            = False # Save packets.
 # WPS variables
 WPS_DISABLE         = False # Flag to skip WPS scan and attacks
 WPS_FINDINGS        = []    # List of (successful) results of WPS attacks
-WPS_STOP_IF_FAIL    = True  # If unable to try ANY PINS after WPS_TIMEOUT, stop attack
-WPS_TIMEOUT         = 120   # Time to wait (in seconds) for successful PIN attempt
+WPS_TIMEOUT         = 300   # Time to wait (in seconds) for successful PIN attempt
+WPS_RATIO_THRESHOLD = 0.01  # Lowest percentage of tries/attempts allowed (where tries > 0)
+WPS_MAX_RETRIES     = 0     # Number of times to re-try the same pin before giving up completely.
 
 
 # Program variables
-WIRELESS_IFACE     = '' # User-defined interface
-TARGET_CHANNEL     = 0  # User-defined channel to scan on
-TARGET_ESSID       = '' # User-defined ESSID of specific target to attack
-TARGET_BSSID       = '' # User-defined BSSID of specific target to attack
-IFACE_TO_TAKE_DOWN = '' # Interface that wifite puts into monitor mode
-                        # It's our job to put it out of monitor mode after the attacks
+WIRELESS_IFACE     = ''    # User-defined interface
+TARGET_CHANNEL     = 0     # User-defined channel to scan on
+TARGET_ESSID       = ''    # User-defined ESSID of specific target to attack
+TARGET_BSSID       = ''    # User-defined BSSID of specific target to attack
+IFACE_TO_TAKE_DOWN = ''    # Interface that wifite puts into monitor mode
+                           # It's our job to put it out of monitor mode after the attacks
 ORIGINAL_IFACE_MAC = ('', '') # Original interface name[0] and MAC address[1] (before spoofing)
-DO_NOT_CHANGE_MAC  = True # Flag for disabling MAC anonymizer
-TARGETS_REMAINING  = 0  # Number of access points remaining to attack
-WPA_CAPS_TO_CRACK  = [] # list of .cap files to crack (full of CapFile objects)
-THIS_MAC           = '' # The interfaces current MAC address.
+DO_NOT_CHANGE_MAC  = True  # Flag for disabling MAC anonymizer
+TARGETS_REMAINING  = 0     # Number of access points remaining to attack
+WPA_CAPS_TO_CRACK  = []    # list of .cap files to crack (full of CapFile objects)
+THIS_MAC           = ''    # The interfaces current MAC address.
 SHOW_MAC_IN_SCAN   = False # Display MACs of the SSIDs in the list of targets
-CRACKED_TARGETS    = [] # List of targets we have already cracked
-
+CRACKED_TARGETS    = []    # List of targets we have already cracked
+ATTACK_ALL_TARGETS = False # Flag for when we want to attack *everyone*
+ATTACK_MIN_POWER   = 0     # Minimum power (dB) for access point to be considered a target
 
 # Console colors
 W  = '\033[0m'  # white (normal)
@@ -277,7 +279,7 @@ def main():
 			
 
 	except KeyboardInterrupt:
-		print ''
+		print '\n '+R+'(^C)'+O+' interrupted\n'
 		exit_gracefully(0)
 	
 	wpa_success = 0
@@ -303,6 +305,7 @@ def main():
 				wpa_total += 1
 			
 			if not need_handshake: wpa_success += 1
+			if TARGETS_REMAINING == 0: break
 			
 			if not WPA_DISABLE and need_handshake:
 				wpa_total += 1
@@ -325,18 +328,18 @@ def main():
 		print GR+' [+] %s%d attack%s completed:%s' % (G, wpa_total + wep_total, '' if wpa_total+wep_total == 1 else 's', W)
 		print ''
 		if wpa_total > 0:
-			if wpa_success == 0:           print ' [+]'+R,
-			elif wpa_success == wpa_total: print ' [+]'+G,
-			else:                          print ' [+]'+O,
+			if wpa_success == 0:           print GR+' [+]'+R,
+			elif wpa_success == wpa_total: print GR+' [+]'+G,
+			else:                          print GR+' [+]'+O,
 			print '%d/%d%s WPA attacks succeeded' % (wpa_success, wpa_total, W)
 		
 			for finding in WPA_FINDINGS:
 				print '        ' + C+finding+W
 		
 		if wep_total > 0:
-			if wep_success == 0:           print ' [+]'+R,
-			elif wep_success == wep_total: print ' [+]'+G,
-			else:                          print ' [+]'+O,
+			if wep_success == 0:           print GR+' [+]'+R,
+			elif wep_success == wep_total: print GR+' [+]'+G,
+			else:                          print GR+' [+]'+O,
 			print '%d/%d%s WEP attacks succeeded' % (wep_success, wep_total, W)
 		
 			for finding in WEP_FINDINGS:
@@ -397,7 +400,8 @@ def handle_args():
 	global WPA_HANDSHAKE_AIRCRACK, WPA_HANDSHAKE_COWPATTY
 	global WEP_DISABLE, WEP_PPS, WEP_TIMEOUT, WEP_ARP_REPLAY, WEP_CHOPCHOP, WEP_FRAGMENT
 	global WEP_CAFFELATTE, WEP_P0841, WEP_HIRTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
-	global WEP_SAVE, WPS_DISABLE, SHOW_MAC_IN_SCAN
+	global WEP_SAVE, SHOW_MAC_IN_SCAN, ATTACK_ALL_TARGETS, ATTACK_MIN_POWER
+	global WPS_DISABLE, WPS_TIMEOUT, WPS_RATIO_THRESHOLD, WPS_MAX_RETRIES
 	
 	args = argv[1:]
 	if args.count('-h') + args.count('--help') + args.count('?') + args.count('-help') > 0:
@@ -434,8 +438,8 @@ def handle_args():
 				except IndexError: print O+' [!]'+R+' no channel given!'+W
 				else: print GR+' [+]'+W+' channel set to %s' % (G+args[i]+W)
 			elif args[i] == '-mac':
-				print GR+' [+]'+W+' mac changing '+G+'enabled'+W
-				print O+'     note: only works if device is not in monitor mode!'+W
+				print GR+' [+]'+W+' mac address anonymizing '+G+'enabled'+W
+				print O+'     note: only works if device is not already in monitor mode!'+W
 				DO_NOT_CHANGE_MAC = False
 			elif args[i] == '-i':
 				i += 1
@@ -454,8 +458,17 @@ def handle_args():
 			elif args[i] == '-showb' or args[i] == '-showbssid':
 				SHOW_MAC_IN_SCAN = True
 				print GR+' [+]'+W+' target MAC address viewing '+G+'enabled'+W
-
-			
+			elif args[i] == '-all' or args[i] == '-hax0ritna0':
+				print GR+' [+]'+W+' targeting '+G+'all access points'+W
+				ATTACK_ALL_TARGETS = True
+			elif args[i] == '-pow' or args[i] == '-power':
+				i += 1
+				try:
+					ATTACK_MIN_POWER = int(args[i])
+				except ValueError: print R+' [!]'+O+' invalid power level: %s' % (R+args[i]+W)
+				except IndexError: print R+' [!]'+O+' no power level given!'+W
+				else: print GR+' [+]'+W+' minimum target power set to %s' % (G+args[i] + "dB"+W)
+				
 			elif args[i] == '-check':
 				i += 1
 				try: capfile = args[i]
@@ -569,10 +582,34 @@ def handle_args():
 				except ValueError: print R+' [!]'+O+' invalid value: %s' % (R+args[i]+W)
 				except IndexError: print R+' [!]'+O+' no value given!'+W
 				else: print GR+' [+]'+W+' packets-per-second rate set to %s' % (G+args[i] + " packets/sec"+W)
-			if args[i] == '-save':
+			if args[i] == '-save' or args[i] == '-wepsave':
 				WEP_SAVE = True
 				print GR+' [+]'+W+' WEP .cap file saving '+G+'enabled'+W
-			
+
+
+			# WPS
+			if args[i] == '-wpst' or args[i] == '-wpstime':
+				i += 1
+				try:
+					WPS_TIMEOUT = int(args[i])
+				except ValueError: print R+' [!]'+O+' invalid timeout: %s' % (R+args[i]+W)
+				except IndexError: print R+' [!]'+O+' no timeout given!'+W
+				else: print GR+' [+]'+W+' WPS attack timeout set to %s' % (G+args[i] + " seconds"+W)
+			if args[i] == '-wpsratio' or args[i] == 'wpsr':
+				i += 1
+				try:
+					WPS_RATIO_THRESHOLD = float(args[i])
+				except ValueError: print R+' [!]'+O+' invalid percentage: %s' % (R+args[i]+W)
+				except IndexError: print R+' [!]'+O+' no ratio given!'+W
+				else: print GR+' [+]'+W+' minimum WPS tries/attempts threshold set to %s' % (G+args[i] + ""+W)
+			if args[i] == '-wpsmaxr' or args[i] == '-wpsretry':
+				i += 1
+				try:
+					WPS_MAX_RETRIES = int(args[i])
+				except ValueError: print R+' [!]'+O+' invalid number: %s' % (R+args[i]+W)
+				except IndexError: print R+' [!]'+O+' no number given!'+W
+				else: print GR+' [+]'+W+' WPS maximum retries set to %s' % (G+args[i] + " retries"+W)
+				
 	except IndexError:
 		print '\nindexerror\n\n'
 	
@@ -614,11 +651,14 @@ def help():
 	print ''
 
 	print head+'   GLOBAL'+W
+	print sw+'\t-all         \t'+des+'attack all targets.              '+de+'[off]'+W
 	print sw+'\t-i '+var+'<iface>  \t'+des+'wireless interface for capturing '+de+'[auto]'+W
+	print sw+'\t-mac         \t'+des+'anonymize mac address            '+de+'[off]'+W
 	print sw+'\t-c '+var+'<channel>\t'+des+'channel to scan for targets      '+de+'[auto]'+W
-	print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name) '+de+'[ask]'+W
-	print sw+'\t-b '+var+'<bssid>  \t'+des+'target a specific access point by bssid (mac) '+de+'[auto]'+W
-	print sw+'\t-showb       \t'+des+'display target BSSIDs after scan '+de+'[off]'+W
+	print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name)  '+de+'[ask]'+W
+	print sw+'\t-b '+var+'<bssid>  \t'+des+'target a specific access point by bssid (mac)  '+de+'[auto]'+W
+	print sw+'\t-showb       \t'+des+'display target BSSIDs after scan               '+de+'[off]'+W
+	print sw+'\t-pow '+var+'<db>   \t'+des+'attacks any targets with signal strenghth > '+var+'db '+de+'[0]'+W
 	print ''
 	
 	print head+'\n   WPA'+W
@@ -645,7 +685,14 @@ def help():
 	print sw+'\t-hirte      \t'+des+'use hirte (cfrag) attack '+de+'[on]'+W
 	print sw+'\t-nofakeauth \t'+des+'stop attack if fake authentication fails    '+de+'[off]'+W
 	print sw+'\t-wepca '+GR+'<n>  \t'+des+'start cracking when number of ivs surpass n '+de+'[10000]'+W
+	print sw+'\t-wepsave    \t'+des+'save a copy of .cap files to this directory '+de+'[off]'+W
 	
+	print head+'\n   WPS'+W
+	print sw+'\t-wps       \t'+des+'only target WPS networks         '+de+'[off]'+W
+	print sw+'\t-wpst '+var+'<sec>  \t'+des+'max wait for new retry before giving up (0: never)  '+de+'[0]'+W
+	print sw+'\t-wpsratio '+var+'<per>\t'+des+'min ratio of successful PIN attempts/total tries    '+de+'[0]'+W
+	print sw+'\t-wpsretry '+var+'<num>\t'+des+'max number of retries for same PIN before giving up '+de+'[0]'+W
+
 	print head+'\n   EXAMPLE'+W
 	print sw+'\t./wifite.py '+W+'-wps -wep -c 6 -pps 600'+W
 	print ''
@@ -712,9 +759,11 @@ def get_iface():
 		if line.find('Mode:Monitor') != -1:
 			monitors.append(iface)
 	
-	# only one device
-	if WIRELESS_IFACE != '' and monitors.count(WIRELESS_IFACE): return WIRELESS_IFACE
-	elif len(monitors) == 1:
+	if WIRELESS_IFACE != '':
+		if monitors.count(WIRELESS_IFACE): return WIRELESS_IFACE
+		print R+' [!]'+O+' could not find wireless interface %s' % ('"'+R+WIRELESS_IFACE+O+'"'+W)
+
+	if len(monitors) == 1:
 		return monitors[0] # Default to only device in monitor mode
 	elif len(monitors) > 1:
 		print GR+" [+]"+W+" interfaces in "+G+"monitor mode:"+W
@@ -835,7 +884,24 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 						targets = [t]
 						stop_scanning = True
 						break
-
+			
+			# If user has chosen to target all access points, wait 20 seconds, then return all
+			if ATTACK_ALL_TARGETS and time.time() - time_started > 10:
+				print GR+'\n [+]'+W+' auto-targeted %s%d%s access point%s' % (G, len(targets), W, '' if len(targets) == 1 else 's')
+				stop_scanning = True
+				
+			if ATTACK_MIN_POWER > 0 and time.time() - time_started > 10:
+				# Remove targets with power < threshold
+				i = 0
+				before_count = len(targets)
+				while i < len(targets):
+					if targets[i].power < ATTACK_MIN_POWER:
+						targets.pop(i)
+					else: i += 1
+				print GR+'\n [+]'+W+' removed %s targets with power < %ddB, %s remain' % \
+				                (G+str(before_count - len(targets))+W, ATTACK_MIN_POWER, G+str(len(targets))+W)
+				stop_scanning = True
+			
 			if stop_scanning: break
 			
 			# If there are unknown SSIDs, send deauths to them.
@@ -881,7 +947,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	except OSError: pass
 	except UnboundLocalError: pass
 	
-	# Use "walsh" program to check for WPS compatibility
+	# Use "wash" program to check for WPS compatibility
 	if not WPS_DISABLE:
 		wps_check_targets(targets, temp + 'wifite-01.cap')
 	
@@ -1036,6 +1102,7 @@ def wps_check_targets(targets, cap_file):
 	
 	if len(targets) == 0 or not os.path.exists(cap_file): return
 	print GR+' [+]'+W+' checking for '+G+'WPS compatibility'+W+'...',
+	stdout.flush()
 	
 	cmd = [program_name,
 	       '-f', cap_file,
@@ -1421,8 +1488,39 @@ def exit_gracefully(code):
 	exit(code)
 
 
-
-
+def attack_interrupted_prompt():
+	"""
+		Promps user to decide if they want to exit, 
+		skip to cracking WPA handshakes,
+		or continue attacking the remaining targets (if applicable).
+		returns True if user chose to exit complete, False otherwise
+	"""
+	global TARGETS_REMAINING
+	should_we_exit = False
+	# If there are more targets to attack, ask what to do next
+	if TARGETS_REMAINING > 0:
+		options = ''
+		print GR+"\n [+] %s%d%s target%s remain%s" % (G, TARGETS_REMAINING, W,
+								'' if TARGETS_REMAINING == 1 else 's', 
+								's' if TARGETS_REMAINING == 1 else '')
+		print GR+" [+]"+W+" what do you want to do?"
+		options += G+'g'+W
+		print G+"     [c]ontinue"+W+" attacking targets"
+		
+		if len(WPA_CAPS_TO_CRACK) > 0:
+			options += W+', '+O+'s'+W
+			print O+"     [s]kip"+W+" to cracking WPA cap files"
+		options += W+', or '+R+'e'+W
+		print R+"     [e]xit"+W+" completely"
+		ri = ''
+		while ri != 'c' and ri != 's' and ri != 'e': 
+			ri = raw_input(GR+' [+]'+W+' please make a selection (%s): ' % options)
+		
+		if ri == 's':
+			TARGETS_REMAINING = 0 # Tells start() to ignore other targets, skip to cracking
+		elif ri == 'e':
+			should_we_exit = True
+	return should_we_exit
 
 
 
@@ -1587,29 +1685,14 @@ def wpa_get_handshake(iface, target, clients):
 	
 	except KeyboardInterrupt: 
 		print R+'\n (^C)'+O+' WPA handshake capture interrupted'+W
-		# If there are more targets to attack, ask what to do next
-		if TARGETS_REMAINING > 0:
-			options = ''
-			print GR+"\n [+] %s%d%s target%s remain%s" % (G, TARGETS_REMAINING, W,
-			            '' if TARGETS_REMAINING == 1 else 's', 
-			            's' if TARGETS_REMAINING == 1 else '')
-			print GR+" [+]"+W+" what do you want to do?"
-			options += G+'g'+W
-			print G+"   [c]ontinue"+W+" attacking targets"
+		if attack_interrupted_prompt():
+			remove_airodump_files(temp + 'wpa')
+			send_interrupt(proc_read)
+			send_interrupt(proc_deauth)
+			print ''
+			exit_gracefully(0)
 			
-			if len(WPA_CAPS_TO_CRACK) > 0:
-				options += W+', '+O+'s'+W
-				print O+"   [s]kip"+W+" to cracking WPA cap files"
-			options += W+', or '+R+'e'+W
-			print R+"   [e]xit"+W+" completely"
-			ri = ''
-			while ri != 'c' and ri != 's' and ri != 'e': 
-				ri = raw_input(GR+' [+]'+W+' please make a selection (%s): ' % options)
-			
-			if ri == 's': TARGETS_REMAINING = 0 # Tells start() to ignore other attacks
-			elif ri == 'e':
-				exit_gracefully(0)
-		
+
 	# clean up
 	remove_airodump_files(temp + 'wpa')
 	send_interrupt(proc_read)
@@ -2216,6 +2299,21 @@ def attack_wep(iface, target, clients):
 			try:            os.rename(temp + 'wep-01.cap', save_as)
 			except OSError: print R+' [!]'+O+' unable to save capture file!'+W
 			else:           print GR+' [+]'+W+' packet capture '+G+'saved'+W+' to '+G+save_as+W
+
+		if attack_interrupted_prompt():
+			send_interrupt(proc_airodump)
+			if proc_aireplay != None:
+				send_interrupt(proc_aireplay)
+			
+			# Remove files generated by airodump/aireplay/packetforce
+			for filename in os.listdir('.'):
+				if filename.startswith('replay_arp-') and filename.endswith('.cap'):
+					remove_file(filename)
+			remove_airodump_files(temp + 'wep')
+			remove_file(temp + 'wepkey.txt')
+			print ''
+			exit_gracefully(0)
+				
 			
 		
 	if successful:
@@ -2406,96 +2504,35 @@ def wps_attack(iface, target):
 		Once PIN is found, PSK can be recovered.
 		PSK is displayed to user and added to WPS_FINDINGS
 	"""
-	"""if not program_exists('reaver'):
-		print R+' [!]'+O+' the program '+G+'reaver'+O+' is required for WPS attacks'+W
-		print ' [!] you can download reaver at:'
-		print C+'        http://code.google.com/p/reaver-wps/'
-		return False
-	"""
 	
-	print GR+' [0:00:00]'+W+' initializing %sWPS PIN attack%s on %s' % (G, W, G+target.ssid+W+' ('+G+target.bssid+W+')'+W)
+	print GR+' [0:00:00]'+W+' initializing %sWPS PIN attack%s on %s' % \
+	             (G, W, G+target.ssid+W+' ('+G+target.bssid+W+')'+W)
 	
 	cmd = ['reaver',
 	       '-i', iface,
 	       '-b', target.bssid,
-	       '-o', temp + 'out.out',
-	       '-a',  # auto-detect best options, also auto-resumes sessions
+	       '-o', temp + 'out.out', # Dump output to file to be monitored
+	       '-a',  # auto-detect best options, auto-resumes sessions, doesn't require input!
 	       '-c', target.channel,
 	       # '--ignore-locks',
 	       '-vv']  # verbose output
-	#print ' '.join(cmd)
 	proc = Popen(cmd, stdout=DN, stderr=DN)
-	cracked = False
-	percent = 'x.xx%'
-	aps = 'x'
+	
+	cracked = False   # Flag for when password/pin is found
+	percent = 'x.xx%' # Percentage complete
+	aps     = 'x'     # Seconds per attempt
 	time_started = time.time()
-	last_pin = ''
-	last_success = 0
-	lock_wait_time = 0
-	retries  = 0
-	attempts = 0
-	tries    = 0
+	last_success = time_started # Time of last successful attempt
+	last_pin = ''     # Keep track of last pin tried (to detect retries)
+	retries  = 0      # Number of times we have attempted this PIN
+	tries_total = 0      # Number of times we have attempted all pins
+	tries    = 0      # Number of successful attempts
 	pin = ''
 	key = ''
+	
 	try:
 		while not cracked:
 			time.sleep(1)
-			
-			if os.path.exists(temp + 'out.out'):
-				inf = open(temp + 'out.out', 'r')
-				lines = inf.read().split('\n')
-				inf.close()
-				for line in lines:
-					if line.strip() == '': continue
-					# print '\n' + line
-					# Status
-					if line.find(' complete @ ') != -1 and len(line) > 8:
-						percent = line.split(' ')[1]
-						i = line.find(' (')
-						j = line.find(' seconds/', i)
-						if i != -1 and j != -1: aps = line[i+2:j]
-					# PIN attempt
-					elif line.find(' Trying pin ') != -1:
-						pin = line.strip().split(' ')[-1]
-						if pin == last_pin: 
-							retries += 1
-						elif attempts == 0:
-							last_pin = pin
-							attempts -= 1
-						else:
-							last_success = time.time()
-							tries += 1
-							last_pin = pin
-							retries = 0
-						attempts += 1
-
-						if retries == 10:
-							# Do something?
-							pass
-
-					# Warning
-					elif line.endswith('10 failed connections in a row'):
-						pass
-					# Check for PIN/PSK
-					elif line.find("WPS PIN: '") != -1:
-						pin = line[line.find("WPS PIN: '") + 10:-1]
-					elif line.find("WPA PSK: '") != -1:
-						key = line[line.find("WPA PSK: '") + 10:-1]
-						cracked = True
-					if cracked: break
-				
-				print ' %s WPS attack, %s tries/atts,' % \
-				            (GR+sec_to_hms(time.time()-time_started)+W, \
-				            G+str(tries)+W+'/'+O+str(attempts)+W),
-				
-				if percent == 'x.xx%': print '\r',
-				else:
-					print '%s complete (%s secs/pin)   \r' % (G+percent+W, G+aps+W),
-				
-				stdout.flush()
-				# Clear out output file if bigger than 1mb
-				inf = open(temp + 'out.out', 'w')
-				inf.close()
 			
 			if proc.poll() != None:
 				# Process stopped: Cracked? Failed? 
@@ -2510,20 +2547,96 @@ def wps_attack(iface, target):
 						key = line[line.find("WPA PSK: '") + 10:-1]
 						cracked = True
 				break
+
+			if not os.path.exists(temp + 'out.out'): continue
+			
+			inf = open(temp + 'out.out', 'r')
+			lines = inf.read().split('\n')
+			inf.close()
+			
+			for line in lines:
+				if line.strip() == '': continue
+				# Status
+				if line.find(' complete @ ') != -1 and len(line) > 8:
+					percent = line.split(' ')[1]
+					i = line.find(' (')
+					j = line.find(' seconds/', i)
+					if i != -1 and j != -1: aps = line[i+2:j]
+				# PIN attempt
+				elif line.find(' Trying pin ') != -1:
+					pin = line.strip().split(' ')[-1]
+					if pin == last_pin: 
+						retries += 1
+					elif tries_total == 0:
+						last_pin = pin
+						tries_total -= 1
+					else:
+						last_success = time.time()
+						tries += 1
+						last_pin = pin
+						retries = 0
+					tries_total += 1
+					
+				# Warning
+				elif line.endswith('10 failed connections in a row'): pass
+				
+				# Check for PIN/PSK
+				elif line.find("WPS PIN: '") != -1:
+					pin = line[line.find("WPS PIN: '") + 10:-1]
+				elif line.find("WPA PSK: '") != -1:
+					key = line[line.find("WPA PSK: '") + 10:-1]
+					cracked = True
+				if cracked: break
+			
+			print ' %s WPS attack, %s success/ttl,' % \
+									(GR+sec_to_hms(time.time()-time_started)+W, \
+									G+str(tries)+W+'/'+O+str(tries_total)+W),
+			
+			if percent == 'x.xx%' and aps == 'x': print '\r',
+			else:
+				print '%s complete (%s sec/att)   \r' % (G+percent+W, G+aps+W),
+			
+			
+			if WPS_TIMEOUT > 0 and (time.time() - time_started) > WPS_TIMEOUT and tries == 0:
+				print R+'\n [!]'+O+' unable to complete successful try in %d seconds' % (WPS_TIMEOUT)
+				print R+' [+]'+W+' skipping %s' % (O+target.ssid+W)
+				break
+			
+			if WPS_MAX_RETRIES > 0 and retries > WPS_MAX_RETRIES:
+				print R+'\n [!]'+O+' unable to complete successful try in %d retries' % (WPS_MAX_RETRIES)
+				print R+' [+]'+O+' the access point may have WPS-locking enabled, or is too far away'+W
+				print R+' [+]'+W+' skipping %s' % (O+target.ssid+W)
+				break
+				
+			if WPS_RATIO_THRESHOLD > 0.0 and tries > 0 and (float(tries) / tries_total) < WPS_RATIO_THRESHOLD:
+				print R+'\n [!]'+O+' successful/total attempts ratio was too low (< %.2f)' % (WPS_RATIO_THRESHOLD)
+				print R+' [+]'+W+' skipping %s' % (G+target.ssid+W)
+				break
+				
+			stdout.flush()
+			# Clear out output file if bigger than 1mb
+			inf = open(temp + 'out.out', 'w')
+			inf.close()
+		
+		# End of big "while not cracked" loop
 		
 		if cracked:
 			if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
 			if key != '': print GR+' [+] %sWPA key found:%s %s' % (G, W, C+key+W)
 			WPA_FINDINGS.append(W+"found %s's WPA key: \"%s\", WPS PIN: %s" % (G+target.ssid+W, C+key+W, C+pin+W))
 			WPA_FINDINGS.append('')
-
+			
 			save_cracked(target.bssid, target.ssid, "Key is '" + key + "' and PIN is '" + pin + "'", 'WPA')
 		
 	except KeyboardInterrupt:
 		print R+'\n (^C)'+O+' WPS brute-force attack interrupted'+W
+		if attack_interrupted_prompt():
+			send_interrupt(proc)
+			print ''
+			exit_gracefully(0)
 	
 	send_interrupt(proc)
-
+	
 	return cracked
 
 
