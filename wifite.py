@@ -56,6 +56,7 @@
 import os     # File management
 import time   # Measuring attack intervals
 import random # Generating a random MAC address.
+import errno  # Error numbers
 
 from sys import argv          # Command-line arguments
 from sys import stdout, stdin # Flushing
@@ -85,11 +86,14 @@ WPA_DEAUTH_TIMEOUT   = 10    # Time to wait between deauthentication bursts (in 
 WPA_ATTACK_TIMEOUT   = 500   # Total time to allow for a handshake attack (in seconds)
 WPA_HANDSHAKE_DIR    = 'hs'  # Directory in which handshakes .cap files are stored
 # Strip file path separator if needed
-if WPA_HANDSHAKE_DIR[-1] == os.sep: WPA_HANDSHAKE_DIR = WPA_HANDSHAKE_DIR[:-1]
+if WPA_HANDSHAKE_DIR != '' and WPA_HANDSHAKE_DIR[-1] == os.sep: 
+	WPA_HANDSHAKE_DIR = WPA_HANDSHAKE_DIR[:-1]
+
 WPA_FINDINGS         = []    # List of strings containing info on successful WPA attacks
 WPA_DONT_CRACK       = False # Flag to skip cracking of handshakes
 WPA_DICTIONARY       = '/pentest/web/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
 if not os.path.exists(WPA_DICTIONARY): WPA_DICTIONARY = ''
+
 # Various programs to use when checking for a four-way handshake.
 # True means the program must find a valid handshake in order for wifite to recognize a handshake.
 # Not finding handshake short circuits result (ALL 'True' programs must find handshake)
@@ -267,7 +271,7 @@ def main():
 				print GR+' [+]'+W+' do you want to '+G+'[s]kip'+W+', '+O+'[c]apture again'+W+', or '+R+'[o]verwrite'+W+'?'
 				ri = 'x'
 				while ri != 's' and ri != 'c' and ri != 'o': 
-					ri = raw_input(GR+' [+] '+W+'enter '+G+'s'+W+', '+O+'c,'+W+' or '+R+'o'+W+': '+G)
+					ri = raw_input(GR+' [+] '+W+'enter '+G+'s'+W+', '+O+'c,'+W+' or '+R+'o'+W+': '+G).lower()
 				print W+"\b",
 				if ri == 's': 
 					targets.pop(index)
@@ -300,12 +304,12 @@ def main():
 		print ''
 		if t.encryption.find('WPA') != -1:
 			need_handshake = True
-			if t.wps:
+			if not WPS_DISABLE and t.wps:
 				need_handshake = not wps_attack(iface, t)
 				wpa_total += 1
 			
 			if not need_handshake: wpa_success += 1
-			if TARGETS_REMAINING == 0: break
+			if TARGETS_REMAINING < 0: break
 			
 			if not WPA_DISABLE and need_handshake:
 				wpa_total += 1
@@ -320,7 +324,7 @@ def main():
 		else: print R+' unknown encryption:',t.encryption,W
 		
 		# If user wants to stop attacking
-		if TARGETS_REMAINING == 0: break
+		if TARGETS_REMAINING <= 0: break
 	
 	if wpa_total + wep_total > 0:
 		# Attacks are done! Show results to user
@@ -354,6 +358,24 @@ def main():
 	print ''
 	exit_gracefully(0)
 
+def rename(old, new):
+	"""
+		Renames file 'old' to 'new', works with separate partitions.
+		Thanks to hannan.sadar
+	"""
+	try:
+		os.rename(old, new)
+	except os.error, detail:
+		if detail.errno == errno.EXDEV:
+			try:
+				copy(old, new)
+			except:
+				os.unlink(new)
+				raise
+				os.unlink(old)
+		# if desired, deal with other errors
+		else:
+			raise
 
 def initial_check():
 	"""
@@ -506,11 +528,11 @@ def handle_args():
 			elif args[i] == '-wpadt':
 				i += 1
 				WPA_DEAUTH_TIMEOUT = int(args[i])
-				print GR+' [+]'+W+' WPA deauth timeout set to '+G+'%s seconds'+W % (args[i])
+				print GR+' [+]'+W+' WPA deauth timeout set to %s' % (G+args[i]+' seconds'+W)
 			elif args[i] == '-wpat':
 				i += 1
 				WPA_ATTACK_TIMEOUT = int(args[i])
-				print GR+' [+]'+W+' WPA attack timeout set to '+G+'%s seconds'+W % (args[i])
+				print GR+' [+]'+W+' WPA attack timeout set to %s' % (G+args[i]+' seconds'+W)
 			elif args[i] == '-crack':
 				WPA_DONT_CRACK = False
 				print GR+' [+]'+W+' WPA cracking '+G+'enabled'+W
@@ -1517,7 +1539,7 @@ def attack_interrupted_prompt():
 			ri = raw_input(GR+' [+]'+W+' please make a selection (%s): ' % options)
 		
 		if ri == 's':
-			TARGETS_REMAINING = 0 # Tells start() to ignore other targets, skip to cracking
+			TARGETS_REMAINING = -1 # Tells start() to ignore other targets, skip to cracking
 		elif ri == 'e':
 			should_we_exit = True
 	return should_we_exit
@@ -1587,7 +1609,7 @@ def wpa_get_handshake(iface, target, clients):
 		client_index = -1
 		
 		# Deauth and check-for-handshake loop
-		while not got_handshake and seconds_running < WPA_ATTACK_TIMEOUT:
+		while not got_handshake and (WPA_ATTACK_TIMEOUT <= 0 or seconds_running < WPA_ATTACK_TIMEOUT):
 			
 			time.sleep(1)
 			seconds_running += 1
@@ -1644,7 +1666,8 @@ def wpa_get_handshake(iface, target, clients):
 				send_interrupt(proc_read)
 				send_interrupt(proc_deauth)
 				
-				os.rename(temp + 'wpa-01.cap.temp', save_as)
+				# Save a copy of the handshake
+				rename(temp + 'wpa-01.cap.temp', save_as)
 				
 				print '\n %s %shandshake captured%s! saved as "%s"' % (GR+sec_to_hms(seconds_running)+W, G, W, G+save_as+W)
 				WPA_FINDINGS.append('%s (%s) handshake captured' % (target.ssid, target.bssid))
@@ -1756,7 +1779,8 @@ def has_handshake_tshark(target, capfile):
 				
 				src = fields[2].lower() # Source MAC address
 				dst = fields[4].lower() # Destination MAC address
-				msg = fields[9][0]      # The message number (1, 2, 3, or 4)
+				#msg = fields[9][0]      # The message number (1, 2, 3, or 4)
+				msg = fields[-1][0]
 				
 				# First, third msgs in 4-way handshake are from the target to client
 				if msg_num % 2 == 1 and (src != target.bssid.lower() or dst != client): continue
@@ -1900,7 +1924,7 @@ def strip_handshake(capfile):
 		       '-w', capfile + '.temp'] # output file
 		proc_strip = call(cmd, stdout=DN, stderr=DN)
 		
-		os.rename(capfile + '.temp', output_file)
+		rename(capfile + '.temp', output_file)
 		
 	else:
 		print R+" [!]"+O+" unable to strip .cap file: neither pyrit nor tshark were found"+W
@@ -2296,7 +2320,7 @@ def attack_wep(iface, target, clients):
 		if WEP_SAVE:
 			# Save packets
 			save_as = re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '_' + target.bssid.replace(':', '-') + '.cap'+W
-			try:            os.rename(temp + 'wep-01.cap', save_as)
+			try:            rename(temp + 'wep-01.cap', save_as)
 			except OSError: print R+' [!]'+O+' unable to save capture file!'+W
 			else:           print GR+' [+]'+W+' packet capture '+G+'saved'+W+' to '+G+save_as+W
 
