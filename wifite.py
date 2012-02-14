@@ -1262,8 +1262,12 @@ def program_exists(program):
 	"""
 		Uses 'which' (linux command) to check if a program is installed.
 	"""
-	proc = Popen(['which', program], stdout=PIPE)
-	return proc.communicate()[0].strip() != ''
+	
+	proc = Popen(['which', program], stdout=PIPE, stderr=PIPE)
+	txt = proc.communicate()
+	if txt[0].strip != '' and txt[1].strip() == '':
+		return True
+	return not (txt[1].strip() == '' or txt[1].find('no %s in' % program) != -1)
 
 
 def sec_to_hms(sec):
@@ -1278,12 +1282,12 @@ def sec_to_hms(sec):
 	return '[%d:%02d:%02d]' % (h, m, sec)
 
 
-def send_interrupt(process):
+def send_interrupt(process): 
 	"""
-		Sends interrupt signal to process's PID.
-	"""
+		Sends interrupt signal to process's PID. 
+	""" 
 	try:
-		os.kill(process.pid, SIGINT)
+		os.kill(process.pid, SIGINT) 
 		# os.kill(process.pid, SIGTERM)
 	except OSError: pass           # process cannot be killed
 	except TypeError: pass         # pid is incorrect type
