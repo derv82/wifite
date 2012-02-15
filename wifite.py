@@ -759,7 +759,7 @@ def disable_monitor_mode():
 	call(['airmon-ng', 'stop', IFACE_TO_TAKE_DOWN], stdout=DN, stderr=DN)
 	print 'done'
 
-
+PRINTED_SCANNING = False
 def get_iface():
 	"""
 		Get the wireless interface in monitor mode. 
@@ -769,6 +769,11 @@ def get_iface():
 		Uses airmon-ng to put device in monitor mode if needed.
 		Returns the name (string) of the interface chosen in monitor mode.
 	"""
+	global PRINTED_SCANNING
+	if not PRINTED_SCANNING:
+		print GR+' [+]'+W+' scanning for wireless devices...'
+		PRINTED_SCANNING = True
+	
 	proc  = Popen(['iwconfig'], stdout=PIPE, stderr=DN)
 	iface = ''
 	monitors = []
@@ -1263,8 +1268,11 @@ def program_exists(program):
 	
 	proc = Popen(['which', program], stdout=PIPE, stderr=PIPE)
 	txt = proc.communicate()
-	if txt[0].strip != '' and txt[1].strip() == '':
+	if txt[0].strip() == '' and txt[1].strip() == '':
+		return False
+	if txt[0].strip() != '' and txt[1].strip() == '':
 		return True
+	
 	return not (txt[1].strip() == '' or txt[1].find('no %s in' % program) != -1)
 
 
