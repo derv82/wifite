@@ -4,18 +4,16 @@ wifite
 Wifite is an automated wireless attack tool.
 
 
-Requirements
-------------
+About
+-----
 
 _Wifite is for Linux only._
 
-Wifite must be run as __root__. This is required by the suite of programs it uses.
+Wifite was designed for use with [Backtrack 5 R1](http://www.backtrack-linux.org/) Linux distrbution. The script also appears to work with Ubuntu 11/10, Debian 6, and Fedora 16.
 
-Wifite was designed for use with [Backtrack 5 R1](http://www.backtrack-linux.org/) Linux distrbution. The script also works on Ubuntu 11/10, Debian 6, and Fedora 16.
+Wifite must be run as __root__. This is required by the suite of programs it uses. Running downloaded scripts as root is a bad idea. I recommend using the Backtrack 5 R1 bootable Live CD, a bootable USB stick (for persistent), or a virtual machine. Note that Virtual Machines cannot directly access hardware so a wireless USB dongle would be required.
 
-Running downloaded scripts as root is a bad idea. I recommend using Backtrack 5 R1 via a bootable Live CD, a bootable USB stick (persistent), or a virtual machine.
-
-Wifite assumes that you have a wireless card and the appropriate drivers that are patched for injection and monitor mode.
+Wifite assumes that you have a wireless card and the appropriate drivers that are patched for injection and promiscuous/monitor mode.
 
 
 Required Programs
