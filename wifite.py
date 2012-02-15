@@ -8,13 +8,6 @@
 	author: derv82 at gmail
 	
 	TODO:
-	 * Target networks with power > X db
-	
-	 Remember cracked access points
-	 * Option for "-cracked" to display list of cracked access points
-	
-	 When ctrl+c is pressed during attack, ask if user wants to exit immediately
-	   - if they ctrl+c again, exit!
 	
 	 WPS
 	 * Mention reaver automatically resumes sessions
@@ -377,6 +370,7 @@ def rename(old, new):
 		else:
 			raise
 
+
 def initial_check():
 	"""
 		Ensures required programs are installed.
@@ -389,6 +383,10 @@ def initial_check():
 		print R+' [!]'+O+' this program is bundled with the aircrack-ng suite:'+W
 		print R+' [!]'+O+'        '+C+'http://www.aircrack-ng.org/'+W
 		print R+' [!]'+O+' or: '+W+'sudo apt-get install aircrack-ng\n'+W
+		exit_gracefully(1)
+	
+	if not program_exists('iw'):
+		print R+' [!]'+O+' airmon-ng requires the program %s\n' % (R+'iw'+W)
 		exit_gracefully(1)
 	
 	printed = False
@@ -646,7 +644,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2" # r"+str(REVISION)
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
