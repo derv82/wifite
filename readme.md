@@ -21,6 +21,8 @@ Wifite assumes that you have a wireless card and the appropriate drivers that ar
 Required Programs
 -----------------
 
+Please see [the installation guide](https://github.com/derv82/wifite/wiki/Installation) on the wiki for help installing any of the tools below.
+
 * [__aircrack-ng suite__](http://aircrack-ng.org/).
   This is absolutely required!  The specific programs used in the suite are: 
     * airmon-ng, 
