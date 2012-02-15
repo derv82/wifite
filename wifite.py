@@ -9,6 +9,9 @@
 	
 	TODO:
 	
+	ignore root check when -cracked (afterward) (need root for -check?)
+	"cracked*" in list of AP's
+
 	 WPS
 	 * Mention reaver automatically resumes sessions
 	 * Warning about length of time required for WPS attack (*hours*)
@@ -226,11 +229,11 @@ def main():
 	"""
 	global TARGETS_REMAINING, THIS_MAC, CRACKED_TARGETS
 	
-	initial_check() # Ensure required programs are installed.
-	
 	CRACKED_TARGETS = load_cracked() # Load previously-cracked APs from file
 
 	handle_args() # Parse args from command line, set global variables.
+	
+	initial_check() # Ensure required programs are installed.
 	
 	# The "get_iface" method anonymizes the MAC address (if needed)
 	# and puts the interface into monitor mode.
@@ -2631,7 +2634,7 @@ def wps_attack(iface, target):
 				print '%s complete (%s sec/att)   \r' % (G+percent+W, G+aps+W),
 			
 			
-			if WPS_TIMEOUT > 0 and (time.time() - time_started) > WPS_TIMEOUT and tries == 0:
+			if WPS_TIMEOUT > 0 and (time.time() - last_success) > WPS_TIMEOUT:
 				print R+'\n [!]'+O+' unable to complete successful try in %d seconds' % (WPS_TIMEOUT)
 				print R+' [+]'+W+' skipping %s' % (O+target.ssid+W)
 				break
