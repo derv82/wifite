@@ -1,7 +1,7 @@
 wifite
 ======
 
-Wifite is an automated wireless attack tool.
+An automated wireless attack tool.
 
 
 What's New?
@@ -9,9 +9,7 @@ What's New?
 
 The biggest change from version 1 is support for ["reaver"](http://reaver-wps.googlecode.com/), a Wifi-Protected Setup (WPS) attack tool.  Reaver can compromise the PIN and PSK for many routers that have WPS enabled, usually within hours.
 
-Other changes include a complete code re-write with bug fixes and added stability.
-
-Due to problems with the Python Tkinter suite, the GUI has been left out of this latest version.
+Other changes include a complete code re-write with bug fixes and added stability.  Due to problems with the Python Tkinter suite, the GUI has been left out of this latest version.
 
 
 About
