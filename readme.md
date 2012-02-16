@@ -24,6 +24,16 @@ Wifite must be run as __root__. This is required by the suite of programs it use
 Wifite assumes that you have a wireless card and the appropriate drivers that are patched for injection and promiscuous/monitor mode.
 
 
+Execution
+---------
+
+To download and execute wifite, run the commands below:
+
+`wget https://raw.github.com/derv82/wifite/master/wifite.py`  
+`chmod +x wifite.py`  
+`./wifite.py`  
+
+
 Required Programs
 -----------------
 
