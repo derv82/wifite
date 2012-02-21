@@ -154,7 +154,7 @@ if os.getuid() != 0:
 	exit(1)
 
 if not os.uname()[0].startswith("Linux"):
-	O+' [!]'+R+' WARNING:'+G+' wifite'+W+' must be run on '+O+'linux'+W
+	print O+' [!]'+R+' WARNING:'+G+' wifite'+W+' must be run on '+O+'linux'+W
 	exit(1)
 
 
