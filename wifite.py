@@ -877,7 +877,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 		stop_scanning = False
 		while True:
 			time.sleep(0.3)
-			if not os.path.exists(temp + 'wifite-01.csv'):
+			if not os.path.exists(temp + 'wifite-01.csv') and time.time() - time_started > 1.0:
 				print R+'\n [!] ERROR!'+W
 				# RTL8187 Unknown Error 132 FIX
 				if proc.poll() != None: # Check if process has finished
@@ -1002,6 +1002,9 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 		if target.ssid == '':
 			p = O+'('+target.bssid+')'+GR+' '+W
 			print '%s' % p.ljust(20),
+		elif ( target.ssid.count('\x00') == len(target.ssid) ):
+			p = '<Length '+str(len(target.ssid))+'>'
+			print '%s' % C+p.ljust(20)+W,
 		elif len(target.ssid) <= 20:
 			print "%s" % C+target.ssid.ljust(20)+W,
 		else:
@@ -1539,7 +1542,7 @@ def attack_interrupted_prompt():
 								'' if TARGETS_REMAINING == 1 else 's', 
 								's' if TARGETS_REMAINING == 1 else '')
 		print GR+" [+]"+W+" what do you want to do?"
-		options += G+'g'+W
+		options += G+'c'+W
 		print G+"     [c]ontinue"+W+" attacking targets"
 		
 		if len(WPA_CAPS_TO_CRACK) > 0:
