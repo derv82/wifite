@@ -17,7 +17,7 @@ About
 
 _Wifite is for Linux only._
 
-Wifite was designed for use with [Backtrack 5 R1](http://www.backtrack-linux.org/) Linux distrbution. The script also appears to work with Ubuntu 11/10, Debian 6, and Fedora 16.
+Wifite was designed for use with pentesting distributions of Linux, such as [Backtrack 5 R1](http://www.backtrack-linux.org/), [BlackBuntu](http://www.blackbuntu.com/), [BackBox](http://www.backbox.org); any Linux distributions with wireless drivers patched for injection. The script appears to also operate with Ubuntu 11/10, Debian 6, and Fedora 16.
 
 Wifite must be run as __root__. This is required by the suite of programs it uses. Running downloaded scripts as root is a bad idea. I recommend using the Backtrack 5 R1 bootable Live CD, a bootable USB stick (for persistent), or a virtual machine. Note that Virtual Machines cannot directly access hardware so a wireless USB dongle would be required.
 
