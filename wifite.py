@@ -11,7 +11,11 @@
 	
 	ignore root check when -cracked (afterward) (need root for -check?)
 	"cracked*" in list of AP's
-
+	
+	Restore same command-line switch names from v1
+	
+	If device already in monitor mode, check for and, if applicable, use macchanger
+	
 	 WPS
 	 * Mention reaver automatically resumes sessions
 	 * Warning about length of time required for WPS attack (*hours*)
@@ -647,11 +651,11 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA2" # r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA3" # r"+str(REVISION)
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
-	print G+" ':.  ':.    "+GR+"/___\\"+G+"    ,:'  ,:'   "+GR+"designed for backtrack 5 r1"
+	print G+" ':.  ':.    "+GR+"/___\\"+G+"    ,:'  ,:'   "+GR+"designed for Linux"
 	print G+"  ':.       "+GR+"/_____\\"+G+"      ,:'     "
 	print G+"           "+GR+"/       \\"+G+"             "
 	print W	
@@ -797,9 +801,11 @@ def get_iface():
 		print GR+" [+]"+W+" interfaces in "+G+"monitor mode:"+W
 		for i, monitor in enumerate(monitors):
 			print "  %s. %s" % (G+str(i+1)+W, G+monitor+W)
-		ri = raw_input(GR+" [+]"+W+" select "+G+"number"+W+" of interface to use for capturing ("+G+"1-%d%s): "+G % len(monitors), W)
+		ri = raw_input("%s [+]%s select %snumber%s of interface to use for capturing (%s1-%d%s): %s" % \
+                  (GR,     W,       G,       W,                              G, len(monitors), W, G))
 		while not ri.isdigit() or int(ri) < 1 or int(ri) > len(monitors):
-			ri = raw_input(GR+" [+]"+W+" select number of interface to use for capturing (1-%d): "+G % len(monitors))
+			ri = raw_input("%s [+]%s select number of interface to use for capturing (%s1-%d%s): %s" % \
+                     (GR,   W,                                              G, len(monitors), W, G))
 		i = int(ri)
 		return monitors[i - 1]
 	
@@ -2686,7 +2692,6 @@ def wps_attack(iface, target):
 #cracked = wpa_crack(c)
 #print cracked
 #exit_gracefully(1)
-
 
 if __name__ == '__main__':
 	try:
