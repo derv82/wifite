@@ -143,9 +143,11 @@ SHOW_MAC_IN_SCAN   = False # Display MACs of the SSIDs in the list of targets
 CRACKED_TARGETS    = []    # List of targets we have already cracked
 ATTACK_ALL_TARGETS = False # Flag for when we want to attack *everyone*
 ATTACK_MIN_POWER   = 0     # Minimum power (dB) for access point to be considered a target
+VERBOSE_APS        = True  # Print access points as they appear
 
 # Console colors
 W  = '\033[0m'  # white (normal)
+CLS= '\033[2m'  # clear screen
 R  = '\033[31m' # red
 G  = '\033[32m' # green
 O  = '\033[33m' # orange
@@ -429,7 +431,8 @@ def handle_args():
 	global WEP_CAFFELATTE, WEP_P0841, WEP_HIRTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
 	global WEP_SAVE, SHOW_MAC_IN_SCAN, ATTACK_ALL_TARGETS, ATTACK_MIN_POWER
 	global WPS_DISABLE, WPS_TIMEOUT, WPS_RATIO_THRESHOLD, WPS_MAX_RETRIES
-	
+	global VERBOSE_APS
+
 	args = argv[1:]
 	if args.count('-h') + args.count('--help') + args.count('?') + args.count('-help') > 0:
 		help()
@@ -495,7 +498,10 @@ def handle_args():
 				except ValueError: print R+' [!]'+O+' invalid power level: %s' % (R+args[i]+W)
 				except IndexError: print R+' [!]'+O+' no power level given!'+W
 				else: print GR+' [+]'+W+' minimum target power set to %s' % (G+args[i] + "dB"+W)
-				
+			elif args[i] == '-q' or args[i] == '-quiet':
+				VERBOSE_APS = False
+				print GR+' [+]'+W+' list of APs during scan '+O+'disabled'+W
+
 			elif args[i] == '-check':
 				i += 1
 				try: capfile = args[i]
@@ -651,7 +657,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA3" # r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA4" # r"+str(REVISION)
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
@@ -966,11 +972,61 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 								        (GR+sec_to_hms(time.time() - time_started)+W, G+t.ssid+W)
 				
 				old_targets = targets[:]
-			
+			if VERBOSE_APS and len(targets) > 0:
+				targets = sorted(targets, key=lambda t: t.power, reverse=True)
+				if not WPS_DISABLE:
+					wps_check_targets(targets, temp + 'wifite-01.cap', verbose=False)
+				
+				os.system('clear')
+				print GR+'\n [+] '+G+'scanning'+W+' ('+G+iface+W+'), updates at 5 sec intervals, '+G+'CTRL+C'+W+' when ready.\n'
+				print "   NUM ESSID                 %sCH  ENCR  POWER  WPS?  CLIENT" % ('BSSID              ' if SHOW_MAC_IN_SCAN else '')
+				print '   --- --------------------  %s--  ----  -----  ----  ------' % ('-----------------  ' if SHOW_MAC_IN_SCAN else '')
+				for i, target in enumerate(targets):
+					print "   %s%2d%s " % (G, i + 1, W),
+					# SSID
+					if target.ssid == '':
+						p = O+'('+target.bssid+')'+GR+' '+W
+						print '%s' % p.ljust(20),
+					elif ( target.ssid.count('\x00') == len(target.ssid) ):
+						p = '<Length '+str(len(target.ssid))+'>'
+						print '%s' % C+p.ljust(20)+W,
+					elif len(target.ssid) <= 20:
+						print "%s" % C+target.ssid.ljust(20)+W,
+					else:
+						print "%s" % C+target.ssid[0:17] + '...'+W,
+					# BSSID
+					if SHOW_MAC_IN_SCAN:
+						print O,target.bssid+W,
+					# Channel
+					print G+target.channel.rjust(3),W,
+					# Encryption
+					if target.encryption.find("WEP") != -1: print G,
+					else:                                   print O,
+					print "\b%3s" % target.encryption.strip().ljust(4) + W,
+					# Power
+					if target.power >= 55:   col = G
+					elif target.power >= 40: col = O
+					else:                    col = R
+					print "%s%3ddb%s" % (col,target.power, W),
+					# WPS
+					if WPS_DISABLE:
+						print "  %3s" % (O+'n/a'+W),
+					else:
+						print "  %3s" % (G+'wps'+W if target.wps else R+' no'+W),
+					# Clients
+					client_text = ''
+					for c in clients:
+						if c.station == target.bssid: 
+							if client_text == '': client_text = 'client'
+							elif client_text[-1] != "s": client_text += "s"
+					if client_text != '': print '  %s' % (G+client_text+W)
+					else: print ''
+				print ''
 			print ' %s %s wireless networks. %s target%s and %s client%s found   \r' % (
 			      GR+sec_to_hms(time.time() - time_started)+W, G+'scanning'+W, 
 			      G+str(len(targets))+W, '' if len(targets) == 1 else 's', 
 			      G+str(len(clients))+W, '' if len(clients) == 1 else 's'),
+			
 			stdout.flush()
 	except KeyboardInterrupt:
 		pass
@@ -995,7 +1051,9 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
 		print R+' [!]'+O+' you may need to wait for targets to show up.'+W
 		print ''
 		exit_gracefully(1)
-	
+
+	if VERBOSE_APS: os.system('clear')
+
 	# Sort by Power
 	targets = sorted(targets, key=lambda t: t.power, reverse=True)
 	
@@ -1125,7 +1183,7 @@ def parse_csv(filename):
 	return (targets, clients)
 
 
-def wps_check_targets(targets, cap_file):
+def wps_check_targets(targets, cap_file, verbose=True):
 	"""
 		Uses reaver's "walsh" (or wash) program to check access points in cap_file
 		for WPS functionality. Sets "wps" field of targets that match to True.
@@ -1138,8 +1196,9 @@ def wps_check_targets(targets, cap_file):
 	program_name = 'walsh' if program_exists('walsh') else 'wash'
 	
 	if len(targets) == 0 or not os.path.exists(cap_file): return
-	print GR+' [+]'+W+' checking for '+G+'WPS compatibility'+W+'...',
-	stdout.flush()
+	if verbose:
+		print GR+' [+]'+W+' checking for '+G+'WPS compatibility'+W+'...',
+		stdout.flush()
 	
 	cmd = [program_name,
 	       '-f', cap_file,
@@ -1153,7 +1212,8 @@ def wps_check_targets(targets, cap_file):
 		for t in targets:
 			if t.bssid.lower() == bssid.lower():
 				t.wps = True
-	print 'done'
+	if verbose:
+		print 'done'
 	removed = 0
 	if not WPS_DISABLE and WPA_DISABLE:
 		i = 0
@@ -1162,7 +1222,7 @@ def wps_check_targets(targets, cap_file):
 				removed += 1
 				targets.pop(i)
 			else: i += 1
-		if removed > 0: print GR+' [+]'+O+' removed %d non-WPS-enabled targets%s' % (removed, W)
+		if removed > 0 and verbose: print GR+' [+]'+O+' removed %d non-WPS-enabled targets%s' % (removed, W)
 
 
 def rtl8187_fix(iface):
