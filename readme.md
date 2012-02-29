@@ -66,3 +66,9 @@ _`*` indicates program is not included in [Backtrack 5 R1](http://www.backtrack-
 * [__cowpatty__](http://www.willhackforsushi.com/Cowpatty.html), a WPA PSK key cracker. Wifite uses cowpatty (if found) to detect handshakes.
 
 
+Licensing
+---------
+
+Wifite is licensed under the GNU General Public License version 2 (GNU GPL v2).
+
+(C) 2011 Derv Merkler
