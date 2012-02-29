@@ -7,6 +7,13 @@
 	
 	author: derv82 at gmail
 	
+	Licensed under the GNU General Public License Version 2 (GNU GPL v2), 
+	    available at: http://www.gnu.org/licenses/gpl-2.0.txt
+	
+	(C) 2011 Derv Merkler
+
+	-----------------
+
 	TODO:
 	
 	ignore root check when -cracked (afterward) (need root for -check?)
@@ -147,7 +154,6 @@ VERBOSE_APS        = True  # Print access points as they appear
 
 # Console colors
 W  = '\033[0m'  # white (normal)
-CLS= '\033[2m'  # clear screen
 R  = '\033[31m' # red
 G  = '\033[32m' # green
 O  = '\033[33m' # orange
@@ -657,7 +663,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA4" # r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA5" # r"+str(REVISION)
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
