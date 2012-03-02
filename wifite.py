@@ -663,7 +663,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA5" # r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA6" # r"+str(REVISION)
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
@@ -1160,6 +1160,7 @@ def parse_csv(filename):
 			cur = 11
 			c[cur] = c[cur].strip()
 			if not c[cur].isdigit(): cur += 1
+			if cur >= len(c): continue
 			
 			ssid = c[cur+1]
 			ssidlen = int(c[cur])
