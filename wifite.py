@@ -663,7 +663,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA6" # r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA7" # r"+str(REVISION)
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
@@ -1156,7 +1156,7 @@ def parse_csv(filename):
 		if line.startswith('BSSID') or line.startswith('Station MAC') or line.strip() == '': continue
 		if not hit_clients: # Access points
 			c = line.split(', ', 13)
-			if len(c) < 6: continue
+			if len(c) < 11: continue
 			cur = 11
 			c[cur] = c[cur].strip()
 			if not c[cur].isdigit(): cur += 1
