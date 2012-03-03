@@ -663,7 +663,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA7" # r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA8" # r"+str(REVISION)
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
@@ -698,6 +698,7 @@ def help():
 	print sw+'\t-b '+var+'<bssid>  \t'+des+'target a specific access point by bssid (mac)  '+de+'[auto]'+W
 	print sw+'\t-showb       \t'+des+'display target BSSIDs after scan               '+de+'[off]'+W
 	print sw+'\t-pow '+var+'<db>   \t'+des+'attacks any targets with signal strenghth > '+var+'db '+de+'[0]'+W
+	print sw+'\t-quiet       \t'+des+'do not print list of APs during scan           '+de+'[off]'+W
 	print ''
 	
 	print head+'\n   WPA'+W
@@ -1160,7 +1161,7 @@ def parse_csv(filename):
 			cur = 11
 			c[cur] = c[cur].strip()
 			if not c[cur].isdigit(): cur += 1
-			if cur >= len(c): continue
+			if cur >= len(c) - 1: continue
 			
 			ssid = c[cur+1]
 			ssidlen = int(c[cur])
