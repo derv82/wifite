@@ -129,7 +129,7 @@ WEP_SAVE            = False # Save packets.
 # WPS variables
 WPS_DISABLE         = False # Flag to skip WPS scan and attacks
 WPS_FINDINGS        = []    # List of (successful) results of WPS attacks
-WPS_TIMEOUT         = 300   # Time to wait (in seconds) for successful PIN attempt
+WPS_TIMEOUT         = 600   # Time to wait (in seconds) for successful PIN attempt
 WPS_RATIO_THRESHOLD = 0.01  # Lowest percentage of tries/attempts allowed (where tries > 0)
 WPS_MAX_RETRIES     = 0     # Number of times to re-try the same pin before giving up completely.
 
@@ -663,7 +663,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA8" # r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA9" # r"+str(REVISION)
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
@@ -703,7 +703,7 @@ def help():
 	
 	print head+'\n   WPA'+W
 	print sw+'\t-wpa        \t'+des+'only target WPA networks (works with -wps -wep)   '+de+'[off]'+W
-	print sw+'\t-wpat '+var+'<sec>   \t'+des+'time to wait for WPA attack to complete (seconds) '+de+'[300]'+W
+	print sw+'\t-wpat '+var+'<sec>   \t'+des+'time to wait for WPA attack to complete (seconds) '+de+'[500]'+W
 	print sw+'\t-wpadt '+var+'<sec>  \t'+des+'time to wait between sending deauth packets (sec) '+de+'[10]'+W
 	print sw+'\t-strip      \t'+des+'strip handshake using tshark or pyrit             '+de+'[off]'+W
 	print sw+'\t-crack '+var+'<dic>\t'+des+'crack WPA handshakes using '+var+'<dic>'+des+' wordlist file    '+de+'[off]'+W
@@ -729,7 +729,7 @@ def help():
 	
 	print head+'\n   WPS'+W
 	print sw+'\t-wps       \t'+des+'only target WPS networks         '+de+'[off]'+W
-	print sw+'\t-wpst '+var+'<sec>  \t'+des+'max wait for new retry before giving up (0: never)  '+de+'[0]'+W
+	print sw+'\t-wpst '+var+'<sec>  \t'+des+'max wait for new retry before giving up (0: never)  '+de+'[600]'+W
 	print sw+'\t-wpsratio '+var+'<per>\t'+des+'min ratio of successful PIN attempts/total tries    '+de+'[0]'+W
 	print sw+'\t-wpsretry '+var+'<num>\t'+des+'max number of retries for same PIN before giving up '+de+'[0]'+W
 
@@ -1157,11 +1157,11 @@ def parse_csv(filename):
 		if line.startswith('BSSID') or line.startswith('Station MAC') or line.strip() == '': continue
 		if not hit_clients: # Access points
 			c = line.split(', ', 13)
-			if len(c) < 11: continue
+			if len(c) <= 11: continue
 			cur = 11
 			c[cur] = c[cur].strip()
 			if not c[cur].isdigit(): cur += 1
-			if cur >= len(c) - 1: continue
+			if cur > len(c) - 1: continue
 			
 			ssid = c[cur+1]
 			ssidlen = int(c[cur])
