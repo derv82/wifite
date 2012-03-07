@@ -129,7 +129,7 @@ WEP_SAVE            = False # Save packets.
 # WPS variables
 WPS_DISABLE         = False # Flag to skip WPS scan and attacks
 WPS_FINDINGS        = []    # List of (successful) results of WPS attacks
-WPS_TIMEOUT         = 600   # Time to wait (in seconds) for successful PIN attempt
+WPS_TIMEOUT         = 660   # Time to wait (in seconds) for successful PIN attempt
 WPS_RATIO_THRESHOLD = 0.01  # Lowest percentage of tries/attempts allowed (where tries > 0)
 WPS_MAX_RETRIES     = 0     # Number of times to re-try the same pin before giving up completely.
 
@@ -729,7 +729,7 @@ def help():
 	
 	print head+'\n   WPS'+W
 	print sw+'\t-wps       \t'+des+'only target WPS networks         '+de+'[off]'+W
-	print sw+'\t-wpst '+var+'<sec>  \t'+des+'max wait for new retry before giving up (0: never)  '+de+'[600]'+W
+	print sw+'\t-wpst '+var+'<sec>  \t'+des+'max wait for new retry before giving up (0: never)  '+de+'[660]'+W
 	print sw+'\t-wpsratio '+var+'<per>\t'+des+'min ratio of successful PIN attempts/total tries    '+de+'[0]'+W
 	print sw+'\t-wpsretry '+var+'<num>\t'+des+'max number of retries for same PIN before giving up '+de+'[0]'+W
 
