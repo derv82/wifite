@@ -71,4 +71,4 @@ Licensing
 
 Wifite is licensed under the GNU General Public License version 2 (GNU GPL v2).
 
-(C) 2011 Derv Merkler
+(C) 2010-2012 Derv Merkler
