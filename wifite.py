@@ -31,7 +31,7 @@
 	 * Update code to work with reaver 1.4 ("x" sec/att)
 
 	 WEP:
-	 * ability to pause/skip/continue	 
+	 * ability to pause/skip/continue	(done, not tested) 
 	 * Option to capture only IVS packets (uses --output-format ivs,csv)
 	   - not compatible on older aircrack-ng's.
 		   - Just run "airodump-ng --output-format ivs,csv", "No interface specified" = works
@@ -55,7 +55,6 @@
 	 
 """
 
-
 #############
 # LIBRARIES #
 #############
@@ -76,7 +75,7 @@ from signal import SIGINT, SIGTERM
 
 import re # RegEx, Converting SSID to filename
 
-
+import urllib # Check for new versions from the repo
 
 
 ################################
@@ -168,7 +167,7 @@ if os.getuid() != 0:
 	print R+' [!]'+O+' login as root ('+W+'su root'+O+') or try '+W+'sudo ./wifite.py'+W
 	exit(1)
 
-if not os.uname()[0].startswith("Linux"):
+if not os.uname()[0].startswith("Linux") and not 'Darwin' in os.uname()[0]: # OSX support, 'cause why not?
 	print O+' [!]'+R+' WARNING:'+G+' wifite'+W+' must be run on '+O+'linux'+W
 	exit(1)
 
@@ -520,7 +519,13 @@ def handle_args():
 						print R+' [!]'+O+' unable to analyze capture file!'+W
 						print R+' [!]'+O+' file not found: '+R+capfile+'\n'+W
 						exit_gracefully(1)
-					
+				'''
+			TODO Uncomment for release
+			elif args[i] == '-upgrade' or args[i] == '-update':
+				upgrade()
+				exit(0)
+				'''
+			
 			elif args[i] == '-cracked':
 				if len(CRACKED_TARGETS) == 0:
 					print R+' [!]'+O+' there are not cracked access points saved to '+R+'cracked.txt\n'+W
@@ -663,7 +668,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 BETA10" # r"+str(REVISION)
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 (r" + str(REVISION) + ")"
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
@@ -671,6 +676,133 @@ def banner():
 	print G+"  ':.       "+GR+"/_____\\"+G+"      ,:'     "
 	print G+"           "+GR+"/       \\"+G+"             "
 	print W	
+
+"""
+TODO Uncomment for release
+def upgrade():
+	'''
+		Checks for new version, prompts to upgrade, then
+		replaces this script with the latest from the repo
+	'''
+	global REVISION
+	REVISION = 83
+	try:
+		print GR+' [!]'+W+' upgrading requires an '+G+'internet connection'+W
+		print GR+' [+]'+W+' checking for latest version...'
+		(revision, description, date_changed) = get_revision()
+		if revision == -1:
+			print R+' [!]'+O+' unable to access googlecode'+W
+		elif revision > REVISION:
+			print GR+' [!]'+W+' a new version is '+G+'available!'+W
+			print GR+' [-]'+W+'   revision:    '+G+str(revision)+W
+			print GR+' [-]'+W+'   description: '+G+description+W
+			print GR+' [-]'+W+'   date added:  '+G+date_changed+W
+			response = raw_input(GR+' [+]'+W+' do you want to upgrade to the latest version? (y/n): ')
+			if not response.lower().startswith('y'):
+				print GR+' [-]'+W+' upgrading '+O+'aborted'+W
+				exit_gracefully(0)
+				return
+			# Download script, replace with this one
+			print GR+' [+] '+G+'downloading'+W+' update...'
+			try:
+				sock = urllib.urlopen('http://wifite.googlecode.com/svn/trunk/wifite.py')
+				page = sock.read()
+			except IOError:
+				page = ''
+			if page == '':
+				print R+' [+] '+O+'unable to download latest version'+W
+				exit_gracefully(1)
+			
+			# Create/save the new script
+			f=open('wifite_new.py','w')
+			f.write(page)
+			f.close()
+			
+			# The filename of the running script
+			this_file = __file__
+			if this_file.startswith('./'):
+				this_file = this_file[2:]
+			
+			# create/save a shell script that replaces this script with the new one
+			f = open('update_wifite.sh','w')
+			f.write('''#!/bin/sh\n
+			           rm -f ''' + this_file + '''\n
+			           mv wifite_new.py ''' + this_file + '''\n
+			           rm -f update_wifite.sh\n
+			           chmod +x ''' + this_file + '''\n
+			          ''')
+			f.close()
+			
+			# Change permissions on the script
+			returncode = call(['chmod','+x','update_wifite.sh'])
+			if returncode != 0:
+				print R+' [!]'+O+' permission change returned unexpected code: '+str(returncode)+W
+				exit_gracefully(1)
+			# Run the script
+			returncode = call(['sh','update_wifite.sh'])
+			if returncode != 0:
+				print R+' [!]'+O+' upgrade script returned unexpected code: '+str(returncode)+W
+				exit_gracefully(1)
+			
+			print GR+' [+] '+G+'updated!'+W+' type "./' + this_file + '" to run again'
+			
+		else:
+			print GR+' [-]'+W+' your copy of wifite is '+G+'up to date'+W
+			
+	except KeyboardInterrupt:
+		print R+'\n (^C)'+O+' wifite upgrade interrupted'+W
+	exit_gracefully(0)
+
+def get_revision():
+	'''
+		Gets latest revision # from google code repository
+		Returns tuple: revision#, description of change, date changed
+	'''
+	irev  =-1
+	desc =''
+	since=''
+	
+	try:
+		sock = urllib.urlopen('http://code.google.com/p/wifite/source/list?path=/trunk/wifite.py')
+		page = sock.read()
+	except IOError:
+		return (-1, '', '')
+	
+	# get the revision
+	start= page.find('href="detail?r=')
+	stop = page.find('&amp;', start)
+	if start != -1 and stop != -1:
+		start += 15
+		rev=page[start:stop]
+		try:
+			irev=int(rev)
+		except ValueError:
+			rev=rev.split('\n')[0]
+			print R+'[+] invalid revision number: "'+rev+'"'
+	
+	# get the description
+	start= page.find(' href="detail?r='+str(irev)+'', start + 3)
+	start= page.find('">',start)
+	stop = page.find('</a>', start)
+	if start != -1 and stop != -1:
+		start += 2
+		desc=page[start:stop].strip()
+		desc=desc.replace("&#39;","'")
+		desc=desc.replace("&lt;","<")
+		desc=desc.replace("&gt;",">")
+		if '\n' in desc:
+			desc = desc.split('\n')[0]
+	
+	# get the time last modified
+	start= page.find(' href="detail?r='+str(irev)+'', start + 3)
+	start= page.find('">',start)
+	stop = page.find('</a>', start)
+	if start != -1 and stop != -1:
+		start += 2
+		since=page[start:stop]
+	
+	return (irev, desc, since)
+"""
 
 
 def help():
@@ -1530,7 +1662,7 @@ def get_essid_from_cap(bssid, capfile):
 
 	cmd = ['tshark',
 	       '-r', capfile,
-	       '-R', 'wlan.fc.type_subtype == 0x05 && wlan.sa == %s' % bssid,
+	       '-R', '\'wlan.fc.type_subtype == 0x05 && wlan.sa == %s\'' % bssid,
 	       '-n']
 	proc = Popen(cmd, stdout=PIPE, stderr=DN)
 	proc.wait()
@@ -1557,7 +1689,7 @@ def get_bssid_from_cap(essid, capfile):
 	if essid != '':
 		cmd = ['tshark',
 		       '-r', capfile,
-		       '-R', 'wlan_mgt.ssid == "%s" && wlan.fc.type_subtype == 0x05' % (essid),
+		       '-R', '\'wlan_mgt.ssid == "%s" && wlan.fc.type_subtype == 0x05\'' % (essid),
 		       '-n',            # Do not resolve MAC vendor names
 		       '-T', 'fields',  # Only display certain fields
 		       '-e', 'wlan.sa'] # souce MAC address
@@ -1586,7 +1718,7 @@ def get_bssid_from_cap(essid, capfile):
 	return ''
 
 
-def exit_gracefully(code):
+def exit_gracefully(code=0):
 	"""
 		We may exit the program at any time.
 		We want to remove the temp folder and any files contained within it.
@@ -1602,6 +1734,7 @@ def exit_gracefully(code):
 	# Change MAC address back if spoofed
 	mac_change_back()
 	print GR+" [+]"+W+" quitting" # wifite will now exit"
+	print ''
 	# GTFO
 	exit(code)
 
@@ -1765,7 +1898,8 @@ def wpa_get_handshake(iface, target, clients):
 				# Save a copy of the handshake
 				rename(temp + 'wpa-01.cap.temp', save_as)
 				
-				print '\n %s %shandshake captured%s! saved as "%s"' % (GR+sec_to_hms(seconds_running)+W, G, W, G+save_as+W)
+				print '\n %s %shandshake captured%s! saved as "%s"' % \
+						(GR+sec_to_hms(WPA_ATTACK_TIMEOUT-seconds_running)+W, G, W, G+save_as+W)
 				WPA_FINDINGS.append('%s (%s) handshake captured' % (target.ssid, target.bssid))
 				WPA_FINDINGS.append('saved as %s' % (save_as))
 				WPA_FINDINGS.append('')
@@ -2840,4 +2974,6 @@ if __name__ == '__main__':
 	except EOFError:          print R+'\n (^D)'+O+' interrupted\n'+W
 	
 	exit_gracefully(0)
+
+
 
