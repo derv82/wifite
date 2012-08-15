@@ -6,6 +6,9 @@
 	wifite
 	
 	author: derv82 at gmail
+
+	Thanks to everyone that contributed to this project.
+	If you helped in the past and want your name here, shoot me an email.
 	
 	Licensed under the GNU General Public License Version 2 (GNU GPL v2), 
 	    available at: http://www.gnu.org/licenses/gpl-2.0.txt
@@ -33,21 +36,21 @@
 	 WEP:
 	 * ability to pause/skip/continue	(done, not tested) 
 	 * Option to capture only IVS packets (uses --output-format ivs,csv)
-	   - not compatible on older aircrack-ng's.
-		   - Just run "airodump-ng --output-format ivs,csv", "No interface specified" = works
+		 - not compatible on older aircrack-ng's.
+		 - Just run "airodump-ng --output-format ivs,csv", "No interface specified" = works
 		 - would cut down on size of saved .caps
 	 
 	 reaver:
 	 	 MONITOR ACTIVITY!
 	 	 - Enter ESSID when executing (?)
-	   - Ensure WPS key attempts have begun. 
-	   - If no attempts can be made, stop attack
-	   
-	   - During attack, if no attempts are made within X minutes, stop attack & Print
-	   
-	   - Reaver's output when unable to associate:
-	     [!] WARNING: Failed to associate with AA:BB:CC:DD:EE:FF (ESSID: ABCDEF)
-	   - If failed to associate for x minutes, stop attack (same as no attempts?)
+		 - Ensure WPS key attempts have begun. 
+		 - If no attempts can be made, stop attack
+		 
+		 - During attack, if no attempts are made within X minutes, stop attack & Print
+		 
+		 - Reaver's output when unable to associate:
+		   [!] WARNING: Failed to associate with AA:BB:CC:DD:EE:FF (ESSID: ABCDEF)
+		 - If failed to associate for x minutes, stop attack (same as no attempts?)
 	
 	MIGHTDO:
 	  * WPA - crack (pyrit/cowpatty) (not really important)
@@ -84,6 +87,7 @@ import urllib # Check for new versions from the repo
 
 REVISION = 85;
 
+TX_POWER = 0 # Transmit power for wireless interface, 0 uses default power
 
 # WPA variables
 WPA_DISABLE          = False # Flag to skip WPA handshake capture
@@ -180,9 +184,9 @@ if not temp.endswith(os.sep):
 	temp += os.sep
 
 # /dev/null, send output from programs so they don't print to screen.
-DN = open(os.devnull, 'w')
-ERRLOG = open('./error.log', 'w')
-OUTLOG = open('./out.log', 'w')
+DN     = open(os.devnull, 'w')
+ERRLOG = open(os.devnull, 'w')
+OUTLOG = open(os.devnull, 'w')
 
 ###################
 # DATA STRUCTURES #
@@ -445,7 +449,7 @@ def handle_args():
 	global WEP_CAFFELATTE, WEP_P0841, WEP_HIRTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
 	global WEP_SAVE, SHOW_MAC_IN_SCAN, ATTACK_ALL_TARGETS, ATTACK_MIN_POWER
 	global WPS_DISABLE, WPS_TIMEOUT, WPS_RATIO_THRESHOLD, WPS_MAX_RETRIES
-	global VERBOSE_APS
+	global VERBOSE_APS, TX_POWER, ERRLOG, OUTLOG
 
 	args = argv[1:]
 	if args.count('-h') + args.count('--help') + args.count('?') + args.count('-help') > 0:
@@ -515,6 +519,20 @@ def handle_args():
 			elif args[i] == '-q' or args[i] == '-quiet':
 				VERBOSE_APS = False
 				print GR+' [+]'+W+' list of APs during scan '+O+'disabled'+W
+	
+			elif args[i] == '-tx':
+				i += 1
+				try: TX_POWER = args[i]
+				except IndexError:
+					print R+' [!]'+O+' unable to set Tx power level; no level given'+W 
+					exit_gracefully(1)
+
+			elif args[i] == '-logs' or args[i] == '-log':
+				# Set output for errors/logs to append to local files instead of /dev/null
+				ERRLOG = open('./error.log', 'a')
+				OUTLOG = open('./out.log', 'a')
+				print GR+' [+]'+W+' output and error logging '+G+'enabled'+W
+
 
 			elif args[i] == '-check':
 				i += 1
@@ -681,7 +699,7 @@ def banner():
 	global REVISION
 	print ''
 	print G+"  .;'                     `;,    "
-	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 (r" + str(REVISION) + "mod)"
+	print G+" .;'  ,;'             `;,  `;,   "+W+"WiFite v2 (r" + str(REVISION) + "mod2)"
 	print G+".;'  ,;'  ,;'     `;,  `;,  `;,  "
 	print G+"::   ::   :   "+GR+"( )"+G+"   :   ::   ::  "+GR+"automated wireless auditor"
 	print G+"':.  ':.  ':. "+GR+"/_\\"+G+" ,:'  ,:'  ,:'  "
@@ -835,47 +853,49 @@ def help():
 	print ''
 
 	print head+'   GLOBAL'+W
-	print sw+'\t-all         \t'+des+'attack all targets.              '+de+'[off]'+W
-	print sw+'\t-i '+var+'<iface>  \t'+des+'wireless interface for capturing '+de+'[auto]'+W
-	print sw+'\t-mac         \t'+des+'anonymize mac address            '+de+'[off]'+W
-	print sw+'\t-c '+var+'<channel>\t'+des+'channel to scan for targets      '+de+'[auto]'+W
-	print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name)  '+de+'[ask]'+W
+	print sw+'\t-all         \t'+des+'attack all targets.                    '+de+'[off]'+W
+	print sw+'\t-i '+var+'<iface>  \t'+des+'wireless interface for capturing      '+de+'[auto]'+W
+	print sw+'\t-mac         \t'+des+'anonymize mac address                  '+de+'[off]'+W
+	print sw+'\t-tx '+var+'<power>  \t'+des+'change interface\'s Tx level to '+var+'<power> '+de+'[off]'+W
+	print sw+'\t-log         \t'+des+'enable command/error logging           '+de+'[off]'+W
+	print sw+'\t-c '+var+'<channel>\t'+des+'channel to scan for targets           '+de+'[auto]'+W
+	print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name)   '+de+'[ask]'+W
 	print sw+'\t-b '+var+'<bssid>  \t'+des+'target a specific access point by bssid (mac)  '+de+'[auto]'+W
-	print sw+'\t-showb       \t'+des+'display target BSSIDs after scan               '+de+'[off]'+W
-	print sw+'\t-pow '+var+'<db>   \t'+des+'attacks any targets with signal strenghth > '+var+'db '+de+'[0]'+W
-	print sw+'\t-quiet       \t'+des+'do not print list of APs during scan           '+de+'[off]'+W
+	print sw+'\t-showb       \t'+des+'display target BSSIDs after scan                '+de+'[off]'+W
+	print sw+'\t-pow '+var+'<db>   \t'+des+'attacks any targets with signal strenghth > '+var+'db    '+de+'[0]'+W
+	print sw+'\t-quiet       \t'+des+'do not print list of APs during scan            '+de+'[off]'+W
 	print ''
 	
 	print head+'\n   WPA'+W
 	print sw+'\t-wpa        \t'+des+'only target WPA networks (works with -wps -wep)   '+de+'[off]'+W
 	print sw+'\t-wpat '+var+'<sec>   \t'+des+'time to wait for WPA attack to complete (seconds) '+de+'[500]'+W
-	print sw+'\t-wpadt '+var+'<sec>  \t'+des+'time to wait between sending deauth packets (sec) '+de+'[10]'+W
-	print sw+'\t-wpac '+var+'<count>  \t'+des+'count sending deauth packets '+de+'[5]'+W
+	print sw+'\t-wpadt '+var+'<sec>  \t'+des+'time to wait between sending deauth packets (sec)  '+de+'[10]'+W
+	print sw+'\t-wpac '+var+'<count>  \t'+des+'count sending deauth packets                        '+de+'[5]'+W
 	print sw+'\t-strip      \t'+des+'strip handshake using tshark or pyrit             '+de+'[off]'+W
 	print sw+'\t-crack '+var+'<dic>\t'+des+'crack WPA handshakes using '+var+'<dic>'+des+' wordlist file    '+de+'[off]'+W
 	print sw+'\t-dict '+var+'<file>\t'+des+'specify dictionary to use when cracking WPA '+de+'[phpbb.txt]'+W
-	print sw+'\t-aircrack   \t'+des+'verify handshake using aircrack '+de+'[on]'+W
+	print sw+'\t-aircrack   \t'+des+'verify handshake using aircrack  '+de+'[on]'+W
 	print sw+'\t-pyrit      \t'+des+'verify handshake using pyrit    '+de+'[off]'+W
-	print sw+'\t-tshark     \t'+des+'verify handshake using tshark   '+de+'[on]'+W
+	print sw+'\t-tshark     \t'+des+'verify handshake using tshark    '+de+'[on]'+W
 	print sw+'\t-cowpatty   \t'+des+'verify handshake using cowpatty '+de+'[off]'+W
 	
 	print head+'\n   WEP'+W
 	print sw+'\t-wep        \t'+des+'only target WEP networks '+de+'[off]'+W
+	print sw+'\t-chopchop   \t'+des+'use chopchop attack       '+de+'[on]'+W
+	print sw+'\t-arpreplay  \t'+des+'use arpreplay attack      '+de+'[on]'+W
+	print sw+'\t-fragment   \t'+des+'use fragmentation attack  '+de+'[on]'+W
+	print sw+'\t-caffelatte \t'+des+'use caffe-latte attack    '+de+'[on]'+W
+	print sw+'\t-p0841      \t'+des+'use -p0841 attack         '+de+'[on]'+W
+	print sw+'\t-hirte      \t'+des+'use hirte (cfrag) attack  '+de+'[on]'+W
 	print sw+'\t-pps '+var+'<num>  \t'+des+'set the number of packets per second to inject '+de+'[600]'+W
 	print sw+'\t-wept '+var+'<sec> \t'+des+'sec to wait for each attack, 0 implies endless '+de+'[600]'+W
-	print sw+'\t-chopchop   \t'+des+'use chopchop attack      '+de+'[on]'+W
-	print sw+'\t-arpreplay  \t'+des+'use arpreplay attack     '+de+'[on]'+W
-	print sw+'\t-fragment   \t'+des+'use fragmentation attack '+de+'[on]'+W
-	print sw+'\t-caffelatte \t'+des+'use caffe-latte attack   '+de+'[on]'+W
-	print sw+'\t-p0841      \t'+des+'use -p0841 attack        '+de+'[on]'+W
-	print sw+'\t-hirte      \t'+des+'use hirte (cfrag) attack '+de+'[on]'+W
-	print sw+'\t-nofakeauth \t'+des+'stop attack if fake authentication fails    '+de+'[off]'+W
-	print sw+'\t-wepca '+GR+'<n>  \t'+des+'start cracking when number of ivs surpass n '+de+'[10000]'+W
-	print sw+'\t-wepsave    \t'+des+'save a copy of .cap files to this directory '+de+'[off]'+W
+	print sw+'\t-nofakeauth \t'+des+'stop attack if fake authentication fails       '+de+'[off]'+W
+	print sw+'\t-wepca '+GR+'<n>  \t'+des+'start cracking when number of ivs surpass n  '+de+'[10000]'+W
+	print sw+'\t-wepsave    \t'+des+'save a copy of .cap files to this directory    '+de+'[off]'+W
 	
 	print head+'\n   WPS'+W
-	print sw+'\t-wps       \t'+des+'only target WPS networks         '+de+'[off]'+W
-	print sw+'\t-wpst '+var+'<sec>  \t'+des+'max wait for new retry before giving up (0: never)  '+de+'[660]'+W
+	print sw+'\t-wps       \t'+des+'only target WPS networks '+de+'[off]'+W
+	print sw+'\t-wpst '+var+'<sec>  \t'+des+'max wait for new retry before giving up (0=never) '+de+'[660]'+W
 	print sw+'\t-wpsratio '+var+'<per>\t'+des+'min ratio of successful PIN attempts/total tries    '+de+'[0]'+W
 	print sw+'\t-wpsretry '+var+'<num>\t'+des+'max number of retries for same PIN before giving up '+de+'[0]'+W
 
@@ -911,10 +931,11 @@ def enable_monitor_mode(iface):
 	call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
 	print 'done'
 	IFACE_TO_TAKE_DOWN = get_iface()
-	print GR+' [+]'+W+' txpower set %s...' % (G+'27'+W),
-	call(['iw', 'reg', 'set', 'BO'], stdout=OUTLOG, stderr=ERRLOG)
-	call(['iwconfig', iface, 'txpower', '27'], stdout=OUTLOG, stderr=ERRLOG)
-	print 'done'
+	if TX_POWER > 0:
+		print GR+' [+]'+W+' setting Tx power to %s%s%s...' % (G, TX_POWER, W),
+		call(['iw', 'reg', 'set', 'BO'], stdout=OUTLOG, stderr=ERRLOG)
+		call(['iwconfig', iface, 'txpower', TX_POWER], stdout=OUTLOG, stderr=ERRLOG)
+		print 'done'
 	return IFACE_TO_TAKE_DOWN
 
 
@@ -965,10 +986,10 @@ def get_iface():
 		for i, monitor in enumerate(monitors):
 			print "  %s. %s" % (G+str(i+1)+W, G+monitor+W)
 		ri = raw_input("%s [+]%s select %snumber%s of interface to use for capturing (%s1-%d%s): %s" % \
-                  (GR,     W,       G,       W,                              G, len(monitors), W, G))
+		              (GR,     W,       G,       W,                              G, len(monitors), W, G))
 		while not ri.isdigit() or int(ri) < 1 or int(ri) > len(monitors):
 			ri = raw_input("%s [+]%s select number of interface to use for capturing (%s1-%d%s): %s" % \
-                     (GR,   W,                                              G, len(monitors), W, G))
+			               (GR,   W,                                              G, len(monitors), W, G))
 		i = int(ri)
 		return monitors[i - 1]
 	
@@ -2993,13 +3014,6 @@ def wps_attack(iface, target):
 	return cracked
 
 
-
-#c = CapFile('hs/KillfuckSoulshitter_C0-C1-C0-07-54-DC_2.cap', 'Killfuck Soulshitter', 'c0:c1:c0:07:54:dc')
-#WPA_CRACKER = 'aircrack'
-#cracked = wpa_crack(c)
-#print cracked
-#exit_gracefully(1)
-
 if __name__ == '__main__':
 	try:
 		banner()
@@ -3008,5 +3022,4 @@ if __name__ == '__main__':
 	except EOFError:          print R+'\n (^D)'+O+' interrupted\n'+W
 	
 	exit_gracefully(0)
-
 
