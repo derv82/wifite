@@ -1832,11 +1832,11 @@ def wpa_get_handshake(iface, target, clients):
                 client_index += 1
                 
                 if client_index == -1 or len(target_clients) == 0 or client_index >= len(target_clients):
-                    print " %s sending 1 deauth to %s*broadcast*%s..." % \
+                    print " %s sending %s deauth to %s*broadcast*%s..." % \
                              (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, G+str(RUN_CONFIG.WPA_DEAUTH_COUNT)+W, G, W),
                     client_index = -1
                 else:
-                    print " %s sending 1 deauth to %s... " % \
+                    print " %s sending %s deauth to %s... " % \
                              (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, \
                               G+str(RUN_CONFIG.WPA_DEAUTH_COUNT)+W, \
                              G+target_clients[client_index].bssid+W),
