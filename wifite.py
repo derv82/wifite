@@ -62,7 +62,7 @@
 # LIBRARIES #
 #############
 
-import pickle    # Serialization
+import csv          # Exporting and importing cracked aps
 import os         # File management
 import time       # Measuring attack intervals
 import random     # Generating a random MAC address.
@@ -232,19 +232,24 @@ class RunConfiguration:
             Saves cracked access point key and info to a file.
         """        
         self.CRACKED_TARGETS.append(target)
-        output = open('cracked.db', 'wb')
-        pickle.dump(self.CRACKED_TARGETS, output)
-        output.close()
+        with open('cracked.csv', 'wb') as csvfile:
+            targetwriter = csv.writer(csvfile, delimiter=',',quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            for target in self.CRACKED_TARGETS:
+                targetwriter.writerow([target.bssid, target.encryption, target.ssid, target.key, target.wps])
 
     def load_cracked(self):
         """
             Loads info about cracked access points into list, returns list.
         """
         result = []
-        if not os.path.exists('cracked.db'): return result
-        fin = open('cracked.db', 'rb')
-        result = pickle.load(fin)
-        fin.close()
+        if not os.path.exists('cracked.csv'): return result
+        with open('cracked.csv', 'rb') as csvfile:
+            targetreader = csv.reader(csvfile, delimiter=',', quotechar='"')
+            for row in targetreader:
+                t = Target(row[0], 0, 0, 0, row[1], row[2])
+                t.key = row[3]
+                t.wps = row[4]
+                result.append(t)
         return result
         
     def handle_args(self):
