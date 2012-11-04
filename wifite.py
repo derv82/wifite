@@ -7,7 +7,8 @@
     
     author: derv82 at gmail
     author: bwall @bwallHatesTwits (ballastsec@gmail.com)
-    
+    author: drone @dronesec (ballastsec@gmail.com)
+
     Thanks to everyone that contributed to this project.
     If you helped in the past and want your name here, shoot me an email
     
@@ -23,6 +24,8 @@
      - Made a run configuration class to handle globals
      - Added -recrack (shows already cracked APs in the possible targets, otherwise hides them)
      - Changed the updater to grab files from GitHub and not Google Code
+	 - Use argparse to parse command-line arguments
+	 - -wepca flag now properly initialized if passed through CLI
     -----------------
     
 
@@ -84,7 +87,7 @@ from subprocess import Popen, call, PIPE
 from signal import SIGINT, SIGTERM
 
 import re # RegEx, Converting SSID to filename
-
+import argparse # arg parsing
 import urllib # Check for new versions from the repo
 
 
@@ -266,249 +269,317 @@ class RunConfiguration:
         """
             Handles command-line arguments, sets global variables.
         """
-        args = argv[1:]
-        if args.count('-h') + args.count('--help') + args.count('?') + args.count('-help') > 0:
-            help()
-            exit_gracefully(0)
-        
         set_encrypt = False
         set_hscheck = False
         set_wep     = False
         capfile     = ''  # Filename of .cap file to analyze for handshakes
-        
+       	
+        opt_parser = self.build_opt_parser()
+        options = opt_parser.parse_args()
+
         try:
-            for i in xrange(0, len(args)):
-
-                if not set_encrypt and (args[i] == '-wpa' or args[i] == '-wep' or args[i] == '-wps'):
-                    self.PS_DISABLE = True
-                    self.WPA_DISABLE = True
-                    self.WEP_DISABLE = True
-                    set_encrypt = True
-                if args[i] == '-recrack':
-                    self.SHOW_ALREADY_CRACKED = True
-                    print GR+' [+]'+W+' including already cracked networks in targets'
-                if   args[i] == '-wpa': 
-                    print GR+' [+]'+W+' targeting '+G+'WPA'+W+' encrypted networks (use '+G+'-wps'+W+' for WPS scan)'
-                    self.WPA_DISABLE = False
-                elif args[i] == '-wep': 
-                    print GR+' [+]'+W+' targeting '+G+'WEP'+W+' encrypted networks'
-                    self.WEP_DISABLE = False
-                elif args[i] == '-wps': 
-                    print GR+' [+]'+W+' targeting '+G+'WPS-enabled'+W+' networks'
-                    self.WPS_DISABLE = False
-                
-                elif args[i] == '-c':
-                    i += 1
-                    try: self.TARGET_CHANNEL = int(args[i])
-                    except ValueError: print O+' [!]'+R+' invalid channel: '+O+args[i]+W
-                    except IndexError: print O+' [!]'+R+' no channel given!'+W
-                    else: print GR+' [+]'+W+' channel set to %s' % (G+args[i]+W)
-                elif args[i] == '-mac':
-                    print GR+' [+]'+W+' mac address anonymizing '+G+'enabled'+W
-                    print O+'     note: only works if device is not already in monitor mode!'+W
-                    self.DO_NOT_CHANGE_MAC = False
-                elif args[i] == '-i':
-                    i += 1
-                    self.WIRELESS_IFACE = args[i]
-                    print GR+' [+]'+W+' set interface: %s' % (G+args[i]+W)
-                elif args[i] == '-e':
-                    i += 1
-                    try: self.TARGET_ESSID = args[i]
-                    except ValueError: print R+' [!]'+O+' no ESSID given!'+W
-                    else: print GR+' [+]'+W+' targeting ESSID "%s"' % (G+args[i]+W)
-                elif args[i] == '-b':
-                    i += 1
-                    try: self.TARGET_BSSID = args[i]
-                    except ValueError: print R+' [!]'+O+' no BSSID given!'+W
-                    else: print GR+' [+]'+W+' targeting BSSID "%s"' % (G+args[i]+W)
-                elif args[i] == '-showb' or args[i] == '-showbssid':
-                    self.SHOW_MAC_IN_SCAN = True
-                    print GR+' [+]'+W+' target MAC address viewing '+G+'enabled'+W
-                elif args[i] == '-all' or args[i] == '-hax0ritna0':
-                    print GR+' [+]'+W+' targeting '+G+'all access points'+W
-                    self.ATTACK_ALL_TARGETS = True
-                elif args[i] == '-pow' or args[i] == '-power':
-                    i += 1
-                    try:
-                        self.ATTACK_MIN_POWER = int(args[i])
-                    except ValueError: print R+' [!]'+O+' invalid power level: %s' % (R+args[i]+W)
-                    except IndexError: print R+' [!]'+O+' no power level given!'+W
-                    else: print GR+' [+]'+W+' minimum target power set to %s' % (G+args[i] + "dB"+W)
-                elif args[i] == '-q' or args[i] == '-quiet':
-                    self.VERBOSE_APS = False
-                    print GR+' [+]'+W+' list of APs during scan '+O+'disabled'+W
-                elif args[i] == '-tx':
-                    i += 1
-                    try: self.TX_POWER = args[i]
-                    except IndexError:
-                        print R+' [!]'+O+' unable to set Tx power level; no level given'+W 
+            if not set_encrypt and (options.wpa or options.wep or options.wps):
+                self.PS_DISABLE = True
+                self.WPA_DISABLE = True
+                self.WEP_DISABLE = True
+                set_encrypt = True
+            if options.recrack:
+                self.SHOW_ALREADY_CRACKED = True
+                print GR+' [+]'+W+' including already cracked networks in targets.'
+            if options.wpa:
+                print GR+' [+]'+W+' targeting '+G+'WPA'+W+' encrypted networks (use '+G+'-wps'+W+' for WPS scan)'
+                self.WPA_DISABLE = False
+            if options.wep:
+                print GR+' [+]'+W+' targeting '+G+'WEP'+W+' encrypted networks'
+                self.WEP_DISABLE = False
+            if options.wps:
+                print GR+' [+]'+W+' targeting '+G+'WPS-enabled'+W+' networks.'
+                self.WPS_DISABLE = False
+            if options.channel:
+                try: self.TARGET_CHANNEL = int(options.channel)
+                except ValueError: print O+' [!]'+R+' invalid channel: '+O+options.channel+W
+                except IndexError: print O+' [!]'+R+' no channel given!'+w
+                else: print GR+' [+]'+W+' channel set to %s' % (G+str(self.TARGET_CHANNEL)+W)
+            if options.mac_anon:
+                print GR+' [+]'+W+' mac address anonymizing '+G+'enabled'+W
+                print O+'      not: only works if device is not already in monitor mode!'+W
+                self.DO_NOT_CHANGE_MAC = False
+            if options.interface:
+                self.WIRELESS_IFACE = options.interface
+                print GR+' [+]'+W+' set interface :%s' % (G+self.WIRELESS_IFACE+W)
+            if options.essid:
+                try: self.TARGET_ESSID = options.essid
+                except ValueError: print R+' [!]'+O+' no ESSID given!'+W
+                else: print GR+' [+]'+W+' targeting ESSID "%s"' % (G+self.TARGET_ESSID+W)
+            if options.bssid:
+                try: self.TARGET_BSSID = options.bssid
+                except ValueError: print R+' [!]'+O+' no BSSID given!'+W
+                else: print GR+' [+]'+W+' targeting BSSID "%s"' % (G+self.TARGET_BSSID+W)
+            if options.showb:
+                self.SHOW_MAC_IN_SCAN = True
+                print GR+' [+]'+W+' target MAC address viewing '+G+'enabled'+W
+            if options.all:
+                self.ATTACK_ALL_TARGETS = True
+                print GR+' [+]'+W+' targeting '+G+'all access points'+W
+            if options.power:
+                try: self.ATTACK_MIN_POWER = int(options.power)
+                except ValueError: print R+' [!]'+O+' invalid power level: %s' % (R+options.power+W)
+                except IndexError: print R+' [!]'+O+' no power level given!'+W
+                else: print GR+' [+]'+W+' minimum target power set to %s' % (G+str(self.ATTACK_MIN_POWER)+W)
+            if options.tx:
+                try: self.TX_POWER = int(options.tx)
+                except ValueError: print R+' [!]'+O+' invalid TX power leve: %s' % ( R+options.tx+W)
+                except IndexError: print R+' [!]'+O+' no TX power level given!'+W
+                else: print GR+' [+]'+W+' TX power level set to %s' % (G+str(self.TX_POWER)+W)
+            if options.quiet:
+                VERBOSE_APS = False
+                print GR+' [+]'+W+' list of APs during scan '+O+'disabled'+W
+            if options.check:
+                try: capfile = options.check
+                except IndexError:
+                    print R+' [!]'+O+' unable to analyze capture file'+W
+                    print R+' [!]'+O+' no cap file given!\n'+W
+                    exit_gracefully(1)
+                else:
+                    if not os.path.exists(capfile):
+                        print R+' [!]'+O+' unable to analyze capture file!'+W
+                        print R+' [!]'+O+' file not found: '+R+capfile+'\n'+W
                         exit_gracefully(1)
-                elif args[i] == '-logs' or args[i] == '-log':
-                    # Set output for errors/logs to append to local files instead of /dev/null
-                    ERRLOG = open('./error.log', 'a')
-                    OUTLOG = open('./out.log', 'a')
-                    print GR+' [+]'+W+' output and error logging '+G+'enabled'+W
-
-
-                elif args[i] == '-check':
-                    i += 1
-                    try: capfile = args[i]
-                    except IndexError:
-                        print R+' [!]'+O+' unable to analyze capture file'+W 
-                        print R+' [!]'+O+' no cap file given!\n'+W
-                        exit_gracefully(1)
-                    else: 
-                        if not os.path.exists(capfile): 
-                            print R+' [!]'+O+' unable to analyze capture file!'+W
-                            print R+' [!]'+O+' file not found: '+R+capfile+'\n'+W
-                            exit_gracefully(1)
-                        
-                elif args[i] == '-upgrade' or args[i] == '-update':
-                    upgrade()
-                    exit(0)
-                    
-                elif args[i] == '-cracked':
-                    if len(self.CRACKED_TARGETS) == 0:
-                        print R+' [!]'+O+' there are not cracked access points saved to '+R+'cracked.db\n'+W
-                        exit_gracefully(1)
-                    print GR+' [+]'+W+' '+W+'previously cracked access points'+W+':'
-                    for victim in self.CRACKED_TARGETS:
-                        if victim.wps != False:
-                            print '        %s (%s) : "%s" - Pin: %s' % (C+victim.ssid+W, C+victim.bssid+W, G+victim.key+W, G+victim.wps+W)
-                        else:
-                            print '     %s (%s) : "%s"' % (C+victim.ssid+W, C+victim.bssid+W, G+victim.key+W)
-                    print ''
-                    exit_gracefully(0)
-                        
-
-                # WPA
-                if not set_hscheck and (args[i] == '-tshark' or args[i] == '-cowpatty' or args[i] == '-aircrack' or args[i] == 'pyrit'):
-                    self.WPA_HANDSHAKE_TSHARK   = False
-                    self.WPA_HANDSHAKE_PYRIT    = False
-                    self.WPA_HANDSHAKE_COWPATTY = False
-                    self.WPA_HANDSHAKE_AIRCRACK = False
-                    set_hscheck = True
-                elif args[i] == '-strip':
-                    self.WPA_STRIP_HANDSHAKE = True
-                    print GR+' [+]'+W+' handshake stripping '+G+'enabled'+W
-                elif args[i] == '-wpadt':
-                    i += 1
-                    self.WPA_DEAUTH_TIMEOUT = int(args[i])
-                    print GR+' [+]'+W+' WPA deauth timeout set to %s' % (G+args[i]+' seconds'+W)
-                elif args[i] == '-wpac':
-                    i += 1
-                    self.WPA_DEAUTH_COUNT = int(args[i])
-                    print GR+' [+]'+W+' WPA deauth count set to %s' % (G+args[i]+' packets'+W)
-                elif args[i] == '-wpat':
-                    i += 1
-                    self.WPA_ATTACK_TIMEOUT = int(args[i])
-                    print GR+' [+]'+W+' WPA attack timeout set to %s' % (G+args[i]+' seconds'+W)
-                elif args[i] == '-crack':
-                    self.WPA_DONT_CRACK = False
-                    print GR+' [+]'+W+' WPA cracking '+G+'enabled'+W
-                elif args[i] == '-dict':
-                    i += 1
-                    try:
-                        self.WPA_DICTIONARY = args[i]
+            if options.update:
+                upgrade()
+                exit(0)
+            if options.cracked:
+                if len(self.CRACKED_TARGETS) == 0:
+                    print R+' [!]'+O+' There are no cracked access points saved to '+R+'cracked.db\n'+W
+                    exit_gracefully(1)
+                print GR+' [+]'+W+' '+W+'previously cracked access points'+W+':'
+                for victim in self.CRACKED_TARGETS:
+                    if victim.wps != False:
+                        print '     %s (%s) : "%s" - Pin: %s' % (C+victim.ssid+W, C+victim.bssid+W, G+victim.key+W, G+victim.wps+W)
+                    else:
+                        print '     %s (%s) : "%s"' % (C+victim.ssid+W, C+victim.bssid+W, G+victim.key+W)
+                print ''
+                exit_gracefully(0)
+            # WPA
+            if not set_hscheck and (options.tshark or options.cowpatty or options.aircrack or options.pyrit):
+                self.WPA_HANDSHAKE_TSHARK = False
+                self.WPA_HANDSHAKE_PYRIT = False
+                self.WPA_HANDSHAKE_COWPATTY = False
+                self.WPA_HANDSHAKE_AIRCRACK = False
+                set_hscheck = True
+            if options.strip:
+                self.WPA_STRIP_HANDSHAKE = True
+                print GR+' [+]'+W+' handshake stripping '+G+'enabled'+W
+            if options.wpadt:
+                try: self.WPA_DEAUTH_TIMEOUT = int(options.wpadt)
+                except ValueError: print R+' [!]'+O+' invalid deauth timeout: %s' % (R+options.wpadt+W)
+                except IndexError: print R+' [!]'+O+' no deauth timeout given!'+W
+                else: print GR+' [+]'+W+' WPA deauth timeout set to %s' % (G+str(self.WPA_DEAUTH_TIMEOUT)+W)
+            if options.wpat:
+                try: self.WPA_ATTACK_TIMEOUT = int(options.wpat)
+                except ValueError: print R+' [!]'+O+' invalid attack timeout: %s' % (R+options.wpat+W)
+                except IndexError: print R+' [!]'+O+' no attack timeout given!'+W
+                else: print GR+' [+]'+W+' WPA attack timeout set to %s' % (G+str(self.WPA_ATTACK_TIMEOUT)+W)
+            if options.crack:
+                self.WPA_DONT_CRACK = False
+                print GR+' [+]'+W+' WPA cracking '+G+'enabled'+W
+                if options.dic:
+                    try: self.WPA_DICTIONARY = options.dic
                     except IndexError: print R+' [!]'+O+' no WPA dictionary given!'
                     else:
-                        if os.path.exists(args[i]):
-                            print GR+' [+]'+W+' WPA dictionary set to %s' % (G+args[i]+W)
+                        if os.path.exists(options.dic):
+                            print GR+' [+]'+W+' WPA dictionary set to %s' % (G + self.WPA_DICTIONARY + W)
                         else:
-                            print R+' [!]'+O+' WPA dictionary file not found: %s' % (args[i])
-                if args[i] == '-tshark':
-                    self.WPA_HANDSHAKE_TSHARK = True
-                    print GR+' [+]'+W+' tshark handshake verification '+G+'enabled'+W
-                if args[i] == '-pyrit':
-                    self.WPA_HANDSHAKE_PYRIT = True
-                    print GR+' [+]'+W+' pyrit handshake verification '+G+'enabled'+W
-                if args[i] == '-aircrack':
-                    self.WPA_HANDSHAKE_AIRCRACK = True
-                    print GR+' [+]'+W+' aircrack handshake verification '+G+'enabled'+W
-                if args[i] == '-cowpatty':
-                    self.WPA_HANDSHAKE_COWPATTY = True
-                    print GR+' [+]'+W+' cowpatty handshake verification '+G+'enabled'+W
+                            print R+' [!]'+O+' WPA dictionary file not found: %s' % (options.dic)
+                else:
+                     print R+' [!]'+O+' WPA dictionary file not given!'
+                     exit_gracefully(1)
+            if options.tshark:
+                self.WPA_HANDSHAKE_TSHARK = True
+                print GR+' [+]'+W+' tshark handshake verification '+G+'enabled'+W
+            if options.pyrit:
+                self.WPA_HANDSHAKE_PYRIT = True
+                print GR+' [+]'+W+' pyrit handshake verification '+G+'enabled'+W
+            if options.aircrack:
+                self.WPA_HANDSHAKE_AIRCRACK = True
+                print GR+' [+]'+W+' aircrack handshake verification '+G+'enabled'+W
+            if options.cowpatty:
+                self.WPA_HANDSHAKE_COWPATTY = True
+                print GR+' [+]'+W+' cowpatty handshake verification '+G+'enabled'+W
 
-                # WEP
-                if not set_wep and args[i] == '-chopchop' or args[i] == 'fragment' or \
-                                   args[i] == 'caffelatte' or args[i] == '-arpreplay' or \
-                                   args[i] == '-p0841' or args[i] == '-hirte':
-                    self.WEP_CHOPCHOP   = False
-                    self.WEP_ARPREPLAY  = False
-                    self.WEP_CAFFELATTE = False
-                    self.WEP_FRAGMENT   = False
-                    self.WEP_P0841      = False
-                    self.WEP_HIRTE      = False
-                if args[i] == '-chopchop': 
-                    print GR+' [+]'+W+' WEP chop-chop attack '+G+'enabled'+W
-                    self.WEP_CHOPCHOP = True
-                if args[i] == '-fragment' or args[i] == '-frag' or args[i] == '-fragmentation':
-                    print GR+' [+]'+W+' WEP fragmentation attack '+G+'enabled'+W
-                    self.WEP_FRAGMENT = True
-                if args[i] == '-caffelatte': 
-                    print GR+' [+]'+W+' WEP caffe-latte attack '+G+'enabled'+W
-                    self.WEP_CAFFELATTE = True
-                if args[i] == '-arpreplay': 
-                    print GR+' [+]'+W+' WEP arp-replay attack '+G+'enabled'+W
-                    self.WEP_ARPREPLAY = True
-                if args[i] == '-p0841': 
-                    print GR+' [+]'+W+' WEP p0841 attack '+G+'enabled'+W
-                    self.WEP_P0841 = True
-                if args[i] == '-hirte': 
-                    print GR+' [+]'+W+' WEP hirte attack '+G+'enabled'+W
-                    self.WEP_HIRTE = True
-                if args[i] == '-nofake': 
-                    print GR+' [+]'+W+' ignoring failed fake-authentication '+R+'disabled'+W
-                    self.WEP_IGNORE_FAKEAUTH = False
-                if args[i] == '-wept' or args[i] == '-weptime':
-                    i += 1
-                    try:
-                        self.WEP_TIMEOUT = int(args[i])
-                    except ValueError: print R+' [!]'+O+' invalid timeout: %s' % (R+args[i]+W)
-                    except IndexError: print R+' [!]'+O+' no timeout given!'+W
-                    else: print GR+' [+]'+W+' WEP attack timeout set to %s' % (G+args[i] + " seconds"+W)
-                if args[i] == '-pps':
-                    i += 1
-                    try:
-                        self.WEP_PPS = int(args[i])
-                    except ValueError: print R+' [!]'+O+' invalid value: %s' % (R+args[i]+W)
-                    except IndexError: print R+' [!]'+O+' no value given!'+W
-                    else: print GR+' [+]'+W+' packets-per-second rate set to %s' % (G+args[i] + " packets/sec"+W)
-                if args[i] == '-save' or args[i] == '-wepsave':
-                    self.WEP_SAVE = True
-                    print GR+' [+]'+W+' WEP .cap file saving '+G+'enabled'+W
+            # WEP
+            if not set_wep and options.chopchop or options.fragment or options.caffeelatte or options.arpreplay \
+                                                or options.p0841 or options.hirte:
+                self.WEP_CHOPCHOP   = False
+                self.WEP_ARPREPLAY  = False
+                self.WEP_CAFFELATTE = False
+                self.WEP_FRAGMENT   = False
+                self.WEP_P0841      = False
+                self.WEP_HIRTE      = False
+            if options.chopchop:
+                print GR+' [+]'+W+' WEP chop-chop attack '+G+'enabled'+W
+                self.WEP_CHOPCHOP = True
+            if options.fragment:
+                print GR+' [+]'+W+' WEP fragmentation attack '+G+'enabled'+W
+                self.WEP_FRAGMENT = True
+            if options.caffeelatte:
+                print GR+' [+]'+W+' WEP caffe-latte attack '+G+'enabled'+W
+                self.WEP_CAFFELATTE = True
+            if options.arpreplay:
+                print GR+' [+]'+W+' WEP arp-replay attack '+G+'enabled'+W
+                self.WEP_ARPREPLAY = True
+            if options.p0841:
+                print GR+' [+]'+W+' WEP p0841 attack '+G+'enabled'+W
+                self.WEP_P0841 = True
+            if options.hirte:
+                print GR+' [+]'+W+' WEP hirte attack '+G+'enabled'+W
+                self.WEP_HIRTE = True
+            if options.fakeauth:
+                print GR+' [+]'+W+' ignoring failed fake-authentication '+R+'disabled'+W
+                self.WEP_IGNORE_FAKEAUTH = False
+            if options.wepca:
+                try: self.WEP_CRACK_AT_IVS = int(options.wepca)
+                except ValueError: print R+' [!]'+O+' invalid number: %s' % ( R+options.wepca+W )
+                except IndexError: print R+' [!]'+O+' no IV number specified!'+W
+                else: print GR+' [+]'+W+' Starting WEP cracking when IV\'s surpass %s' % (G+str(self.WEP_CRACK_AT_IVS)+W)
+            if options.wept:
+                try: self.WEP_TIMEOUT = int(options.wept)
+                except ValueError: print R+' [!]'+O+' invalid timeout: %s' % (R+options.wept+W)
+                except IndexError: print R+' [!]'+O+' no timeout given!'+W
+                else: print GR+' [+]'+W+' WEP attack timeout set to %s' % (G+str(self.WEP_TIMEOUT) + " seconds"+W)
+            if options.pps:
+                try: self.WEP_PPS = int(options.pps)
+                except ValueError: print R+' [!]'+O+' invalid value: %s' % (R+options.pps+W)
+                except IndexError: print R+' [!]'+O+' no value given!'+W
+                else: print GR+' [+]'+W+' packets-per-second rate set to %s' % (G+str(options.pps) + " packets/sec"+W)
+            if options.wepsave:
+                self.WEP_SAVE = True
+                print GR+' [+]'+W+' WEP .cap file saving '+G+'enabled'+W
 
+            # WPS
+            if options.wpst:
+                try: self.WPS_TIMEOUT = int(options.wpst)
+                except ValueError: print R+' [!]'+O+' invalid timeout: %s' % (R+options.wpst+W)
+                except IndexError: print R+' [!]'+O+' no timeout given!'+W
+                else: print GR+' [+]'+W+' WPS attack timeout set to %s' % (G+str(self.WPS_TIMEOUT)+ " seconds"+W)
+            if options.wpsratio:
+                try: self.WPS_RATIO_THRESHOLD = float(options.wpsratio)
+                except ValueError: print R+' [!]'+O+' invalid percentage: %s' % (R+options.wpsratio+W)
+                except IndexError: print R+' [!]'+O+' no ratio given!'+W
+                else: print GR+' [+]'+W+' minimum WPS tries/attempts threshold set to %s' % (G+str(self.WPS_RATIO_THRESHOLD)+""+W)
+            if options.wpsretry:
+                try: self.WPS_MAX_RETRIES = int(options.wpsretry)
+                except ValueError: print R+' [!]'+O+' invalid number: %s' % (R+options.wpsretry+W)
+                except IndexError: print R+' [!]'+O+' no number given!'+W
+                else: print GR+' [+]'+W+' WPS maximum retries set to %s' % (G+str(self.WPS_MAX_RETRIES) + " retries"+W)
 
-                # WPS
-                if args[i] == '-wpst' or args[i] == '-wpstime':
-                    i += 1
-                    try:
-                        self.WPS_TIMEOUT = int(args[i])
-                    except ValueError: print R+' [!]'+O+' invalid timeout: %s' % (R+args[i]+W)
-                    except IndexError: print R+' [!]'+O+' no timeout given!'+W
-                    else: print GR+' [+]'+W+' WPS attack timeout set to %s' % (G+args[i] + " seconds"+W)
-                if args[i] == '-wpsratio' or args[i] == 'wpsr':
-                    i += 1
-                    try:
-                        self.WPS_RATIO_THRESHOLD = float(args[i])
-                    except ValueError: print R+' [!]'+O+' invalid percentage: %s' % (R+args[i]+W)
-                    except IndexError: print R+' [!]'+O+' no ratio given!'+W
-                    else: print GR+' [+]'+W+' minimum WPS tries/attempts threshold set to %s' % (G+args[i] + ""+W)
-                if args[i] == '-wpsmaxr' or args[i] == '-wpsretry':
-                    i += 1
-                    try:
-                        self.WPS_MAX_RETRIES = int(args[i])
-                    except ValueError: print R+' [!]'+O+' invalid number: %s' % (R+args[i]+W)
-                    except IndexError: print R+' [!]'+O+' no number given!'+W
-                    else: print GR+' [+]'+W+' WPS maximum retries set to %s' % (G+args[i] + " retries"+W)
-                    
         except IndexError:
             print '\nindexerror\n\n'
         
         if capfile != '':
             analyze_capfile(capfile)
         print ''
-    
+
+    #
+    # options are doubled for backwards compatbility; will be removed soon and fully moved to GNU-style
+    #
+    def build_opt_parser(self):
+        option_parser = argparse.ArgumentParser()
+
+        # set commands
+        command_group = option_parser.add_argument_group('COMMAND')
+        command_group.add_argument('--check', help='Check capfile [file] for handshakes.', action='store', dest='check')
+        command_group.add_argument('-check', action='store', dest='check', help=argparse.SUPPRESS)
+        command_group.add_argument('--cracked', help='Display previously cracked access points.', action='store_true', dest='cracked')
+        command_group.add_argument('-cracked', help=argparse.SUPPRESS, action='store_true', dest='cracked')
+        command_group.add_argument('--recrack', help='Include already cracked networks in targets.', action='store_true', dest='recrack')
+        command_group.add_argument('-recrack', help=argparse.SUPPRESS, action='store_true', dest='recrack')
+
+        # set global
+        global_group = option_parser.add_argument_group('GLOBAL')
+        global_group.add_argument('--all', help='Attack all targets.', default=False, action='store_true', dest='all')
+        global_group.add_argument('-all', help=argparse.SUPPRESS, default=False, action='store_true', dest='all')
+        global_group.add_argument('--i', help='Wireless interface for capturing.', action='store', dest='interface')
+        global_group.add_argument('-i', help=argparse.SUPPRESS, action='store', dest='interface')
+        global_group.add_argument('--mac', help='Anonymize MAC address.', action='store_true', default=False, dest='mac_anon')
+        global_group.add_argument('-mac', help=argparse.SUPPRESS, action='store_true', default=False, dest='mac_anon')
+        global_group.add_argument('--c', help='Channel to scan for targets.', action='store', dest='channel')
+        global_group.add_argument('-c', help=argparse.SUPPRESS, action='store', dest='channel')
+        global_group.add_argument('--e', help='Target a specific access point by ssid (name).', action='store', dest='essid')
+        global_group.add_argument('-e', help=argparse.SUPPRESS, action='store', dest='essid')
+        global_group.add_argument('--b', help='Target a specific access point by bssid (mac).', action='store', dest='bssid')
+        global_group.add_argument('-b', help=argparse.SUPPRESS, action='store', dest='bssid')
+        global_group.add_argument('--showb', help='Display target BSSIDs after scan.', action='store_true', dest='showb')
+        global_group.add_argument('-showb', help=argparse.SUPPRESS, action='store_true', dest='showb')
+        global_group.add_argument('--power', help='Attacks any targets with signal strength > [pow].',action='store',dest='power')
+        global_group.add_argument('-power', help=argparse.SUPPRESS,action='store',dest='power')
+        global_group.add_argument('--tx', help='Set adapter TX power level.', action='store', dest='tx')
+        global_group.add_argument('-tx', help=argparse.SUPPRESS, action='store', dest='tx')
+        global_group.add_argument('--quiet', help='Do not print list of APs during scan.', action='store_true', dest='quiet')
+        global_group.add_argument('-quiet', help=argparse.SUPPRESS, action='store_true', dest='quiet')
+        global_group.add_argument('--update', help='Check and update Wifite.', default=False,action='store_true', dest='update')
+        global_group.add_argument('-update', help=argparse.SUPPRESS, default=False,action='store_true', dest='update')
+        # set wpa commands
+        wpa_group = option_parser.add_argument_group( 'WPA')
+        wpa_group.add_argument('--wpa', help='Only target WPA networks (works with --wps --wep).', default=False,action='store_true', dest='wpa')
+        wpa_group.add_argument('-wpa', help=argparse.SUPPRESS, default=False,action='store_true', dest='wpa')
+        wpa_group.add_argument('--wpat', help='Time to wait for WPA attack to complete (seconds).', action='store', dest='wpat')
+        wpa_group.add_argument('-wpat', help=argparse.SUPPRESS, action='store', dest='wpat')
+        wpa_group.add_argument('--wpadt', help='Time to wait between sending deauth packets (seconds).', action='store', dest='wpadt')
+        wpa_group.add_argument('-wpadt', help=argparse.SUPPRESS, action='store', dest='wpadt')
+        wpa_group.add_argument('--strip', help='Strip handshake using tshark or pyrit.', default=False, action='store_true', dest='strip')
+        wpa_group.add_argument('-strip', help=argparse.SUPPRESS, default=False, action='store_true', dest='strip')
+        wpa_group.add_argument('--crack', help='Crack WPA handshakes using [dic] wordlist file.', action='store_true', dest='crack')
+        wpa_group.add_argument('-crack', help=argparse.SUPPRESS, action='store_true', dest='crack')
+        wpa_group.add_argument('--dict', help='Specificy dictionary to use when cracking WPA.', action='store', dest='dic')
+        wpa_group.add_argument('-dict', help=argparse.SUPPRESS, action='store', dest='dic')
+        wpa_group.add_argument('--aircrack', help='Verify handshake using aircrack.', default=False, action='store_true', dest='aircrack')
+        wpa_group.add_argument('-aircrack', help=argparse.SUPPRESS, default=False, action='store_true', dest='aircrack')
+        wpa_group.add_argument('--pyrit', help='Verify handshake using pyrit.', default=False, action='store_true', dest='pyrit')
+        wpa_group.add_argument('-pyrit', help=argparse.SUPPRESS,default=False, action='store_true', dest='pyrit')
+        wpa_group.add_argument('--tshark', help='Verify handshake using tshark.', default=False, action='store_true', dest='tshark')
+        wpa_group.add_argument('-tshark', help=argparse.SUPPRESS, default=False, action='store_true', dest='tshark')
+        wpa_group.add_argument('--cowpatty', help='Verify handshake using cowpatty.', default=False, action='store_true', dest='cowpatty')
+        wpa_group.add_argument('-cowpatty', help=argparse.SUPPRESS, default=False, action='store_true', dest='cowpatty')
+        # set WEP commands
+        wep_group = option_parser.add_argument_group('WEP')
+        wep_group.add_argument('--wep', help='Only target WEP networks.', default=False, action='store_true', dest='wep')
+        wep_group.add_argument('-wep', help=argparse.SUPPRESS, default=False, action='store_true', dest='wep')
+        wep_group.add_argument('--pps', help='Set the number of packets per second to inject.', action='store', dest='pps')
+        wep_group.add_argument('-pps', help=argparse.SUPPRESS, action='store', dest='pps')
+        wep_group.add_argument('--wept', help='Sec to wait for each attack, 0 implies endless.', action='store', dest='wept')
+        wep_group.add_argument('-wept', help=argparse.SUPPRESS, action='store', dest='wept')
+        wep_group.add_argument('--chopchop', help='Use chopchop attack.', default=False, action='store_true', dest='chopchop')
+        wep_group.add_argument('-chopchop', help=argparse.SUPPRESS, default=False, action='store_true', dest='chopchop')
+        wep_group.add_argument('--arpreplay', help='Use arpreplay attack.', default=False, action='store_true', dest='arpreplay')
+        wep_group.add_argument('-arpreplay', help=argparse.SUPPRESS, default=False, action='store_true', dest='arpreplay')
+        wep_group.add_argument('--fragment', help='Use fragmentation attack.', default=False, action='store_true', dest='fragment')
+        wep_group.add_argument('-fragment', help=argparse.SUPPRESS, default=False, action='store_true', dest='fragment')
+        wep_group.add_argument('--caffelatte', help='Use caffe-latte attack.', default=False, action='store_true', dest='caffeelatte')
+        wep_group.add_argument('-caffelatte', help=argparse.SUPPRESS, default=False, action='store_true', dest='caffeelatte')
+        wep_group.add_argument('--p0841', help='Use P0842 attack.', default=False, action='store_true', dest='p0841')
+        wep_group.add_argument('-p0841', help=argparse.SUPPRESS, default=False, action='store_true', dest='p0841')
+        wep_group.add_argument('--hirte', help='Use hirte attack.', default=False, action='store_true', dest='hirte')
+        wep_group.add_argument('-hirte', help=argparse.SUPPRESS, default=False, action='store_true', dest='hirte')
+        wep_group.add_argument('--nofakeauth', help='Stop attack if fake authentication fails.', default=False, action='store_true', dest='fakeauth')
+        wep_group.add_argument('-nofakeauth', help=argparse.SUPPRESS, default=False, action='store_true', dest='fakeauth')
+        wep_group.add_argument('--wepca', help='Start cracking when number of IVs surpass [n].', action='store', dest='wepca')
+        wep_group.add_argument('-wepca', help=argparse.SUPPRESS, action='store', dest='wepca')
+        wep_group.add_argument('--wepsave', help='Save a copy of .cap files to this directory.', default=None,action='store', dest='wepsave')
+        wep_group.add_argument('-wepsave', help=argparse.SUPPRESS, default=None,action='store', dest='wepsave')
+        # set WPS commands
+        wps_group = option_parser.add_argument_group('WPS')
+        wps_group.add_argument('--wps', help='Only target WPS networks.', default=False, action='store_true', dest='wps')
+        wps_group.add_argument('-wps', help=argparse.SUPPRESS, default=False, action='store_true', dest='wps')
+        wps_group.add_argument('--wpst', help='Max wait for new retry before giving up (0: never).', action='store', dest='wpst')
+        wps_group.add_argument('-wpst', help=argparse.SUPPRESS, action='store', dest='wpst')
+        wps_group.add_argument('--wpsratio', help='Min ratio of successful PIN attempts/total retries.', action='store', dest='wpsratio')
+        wps_group.add_argument('-wpsratio', help=argparse.SUPPRESS, action='store', dest='wpsratio')
+        wps_group.add_argument('--wpsretry', help='Max number of retries for same PIN before giving up.', action='store', dest='wpsretry')
+        wps_group.add_argument('-wpsretry', help=argparse.SUPPRESS, action='store', dest='wpsretry')
+
+        return option_parser
+
 RUN_CONFIG = RunConfiguration()
 ##################
 # MAIN FUNCTIONS #
