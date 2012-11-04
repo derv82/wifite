@@ -703,7 +703,6 @@ def initial_check():
         print R+' [!]'+O+' the program %s is not required, but is recommended%s' % (R+rec+O, W)
     if printed: print ''    
 
-
 def banner():
     """ 
         Displays ASCII art of the highest caliber.
@@ -729,14 +728,12 @@ def upgrade():
     try:
         print GR+' [!]'+W+' upgrading requires an '+G+'internet connection'+W
         print GR+' [+]'+W+' checking for latest version...'
-        (revision, description, date_changed) = get_revision()
+        revision = get_revision()
         if revision == -1:
-            print R+' [!]'+O+' unable to access googlecode'+W
+            print R+' [!]'+O+' unable to access GitHub'+W
         elif revision > RUN_CONFIG.REVISION:
             print GR+' [!]'+W+' a new version is '+G+'available!'+W
             print GR+' [-]'+W+'   revision:    '+G+str(revision)+W
-            print GR+' [-]'+W+'   description: '+G+description+W
-            print GR+' [-]'+W+'   date added:  '+G+date_changed+W
             response = raw_input(GR+' [+]'+W+' do you want to upgrade to the latest version? (y/n): ')
             if not response.lower().startswith('y'):
                 print GR+' [-]'+W+' upgrading '+O+'aborted'+W
@@ -745,7 +742,7 @@ def upgrade():
             # Download script, replace with this one
             print GR+' [+] '+G+'downloading'+W+' update...'
             try:
-                sock = urllib.urlopen('http://wifite.googlecode.com/svn/trunk/wifite.py')
+                sock = urllib.urlopen('https://github.com/derv82/wifite/raw/master/wifite.py')
                 page = sock.read()
             except IOError:
                 page = ''
@@ -795,24 +792,22 @@ def upgrade():
 
 def get_revision():
     """
-        Gets latest revision # from google code repository
-        Returns tuple: revision#, description of change, date changed
+        Gets latest revision # from the GitHub repository
+        Returns : revision#
     """
     irev  =-1
-    desc =''
-    since=''
     
     try:
-        sock = urllib.urlopen('http://code.google.com/p/wifite/source/list?path=/trunk/wifite.py')
+        sock = urllib.urlopen('https://github.com/derv82/wifite/raw/master/wifite.py')
         page = sock.read()
     except IOError:
         return (-1, '', '')
     
     # get the revision
-    start= page.find('href="detail?r=')
-    stop = page.find('&amp;', start)
+    start= page.find('REVISION = ')
+    stop = page.find(";", start)
     if start != -1 and stop != -1:
-        start += 15
+        start += 11
         rev=page[start:stop]
         try:
             irev=int(rev)
@@ -820,28 +815,7 @@ def get_revision():
             rev=rev.split('\n')[0]
             print R+'[+] invalid revision number: "'+rev+'"'
     
-    # get the description
-    start= page.find(' href="detail?r='+str(irev)+'', start + 3)
-    start= page.find('">',start)
-    stop = page.find('</a>', start)
-    if start != -1 and stop != -1:
-        start += 2
-        desc=page[start:stop].strip()
-        desc=desc.replace("&#39;","'")
-        desc=desc.replace("&lt;","<")
-        desc=desc.replace("&gt;",">")
-        if '\n' in desc:
-            desc = desc.split('\n')[0]
-    
-    # get the time last modified
-    start= page.find(' href="detail?r='+str(irev)+'', start + 3)
-    start= page.find('">',start)
-    stop = page.find('</a>', start)
-    if start != -1 and stop != -1:
-        start += 2
-        since=page[start:stop]
-    
-    return (irev, desc, since)
+    return irev
 
 def help():
     """
