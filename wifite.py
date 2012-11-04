@@ -22,6 +22,7 @@
      - cracked.txt changed to cracked.csv and stored in csv format(easier to read, no \x00s)
      - Made a run configuration class to handle globals
      - Added -recrack (shows already cracked APs in the possible targets, otherwise hides them)
+     - Changed the updater to grab files from GitHub and not Google Code
     -----------------
     
 
@@ -831,6 +832,7 @@ def help():
     print head+'   COMMANDS'+W
     print sw+'\t-check '+var+'<file>\t'+des+'check capfile '+var+'<file>'+des+' for handshakes.'+W
     print sw+'\t-cracked    \t'+des+'display previously-cracked access points'+W
+    print sw+'\t-recrack    \t'+des+'allow recracking of previously cracked access points'+W
     print ''
 
     print head+'   GLOBAL'+W
