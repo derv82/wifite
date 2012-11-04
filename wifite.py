@@ -17,7 +17,7 @@
     
     (C) 2011 Derv Merkler
 
-    bwall additions
+    Ballast Security additions
     -----------------
      - No longer requires to be root to run -cracked
      - cracked.txt changed to cracked.csv and stored in csv format(easier to read, no \x00s)
@@ -273,7 +273,7 @@ class RunConfiguration:
         set_hscheck = False
         set_wep     = False
         capfile     = ''  # Filename of .cap file to analyze for handshakes
-       	
+        
         opt_parser = self.build_opt_parser()
         options = opt_parser.parse_args()
 
@@ -298,7 +298,7 @@ class RunConfiguration:
             if options.channel:
                 try: self.TARGET_CHANNEL = int(options.channel)
                 except ValueError: print O+' [!]'+R+' invalid channel: '+O+options.channel+W
-                except IndexError: print O+' [!]'+R+' no channel given!'+w
+                except IndexError: print O+' [!]'+R+' no channel given!'+W
                 else: print GR+' [+]'+W+' channel set to %s' % (G+str(self.TARGET_CHANNEL)+W)
             if options.mac_anon:
                 print GR+' [+]'+W+' mac address anonymizing '+G+'enabled'+W
@@ -332,7 +332,7 @@ class RunConfiguration:
                 except IndexError: print R+' [!]'+O+' no TX power level given!'+W
                 else: print GR+' [+]'+W+' TX power level set to %s' % (G+str(self.TX_POWER)+W)
             if options.quiet:
-                VERBOSE_APS = False
+                self.VERBOSE_APS = False
                 print GR+' [+]'+W+' list of APs during scan '+O+'disabled'+W
             if options.check:
                 try: capfile = options.check
@@ -392,8 +392,8 @@ class RunConfiguration:
                         else:
                             print R+' [!]'+O+' WPA dictionary file not found: %s' % (options.dic)
                 else:
-                     print R+' [!]'+O+' WPA dictionary file not given!'
-                     exit_gracefully(1)
+                    print R+' [!]'+O+' WPA dictionary file not given!'
+                    exit_gracefully(1)
             if options.tshark:
                 self.WPA_HANDSHAKE_TSHARK = True
                 print GR+' [+]'+W+' tshark handshake verification '+G+'enabled'+W
@@ -1743,7 +1743,7 @@ def get_bssid_from_cap(essid, capfile):
     
     if not program_exists('tshark'): return ''
 
-     # Attempt to get BSSID based on ESSID
+# Attempt to get BSSID based on ESSID
     if essid != '':
         cmd = ['tshark',
                '-r', capfile,
