@@ -6,6 +6,7 @@
     wifite
     
     author: derv82 at gmail
+    author: bwall @bwallHatesTwits (ballastsec@gmail.com)
     
     Thanks to everyone that contributed to this project.
     If you helped in the past and want your name here, shoot me an email
@@ -15,12 +16,16 @@
     
     (C) 2011 Derv Merkler
 
+    bwall additions
     -----------------
+     - No longer requires to be root to run -cracked
+     - cracked.txt changed to cracked.csv and stored in csv format(easier to read, no \x00s)
+     - Made a run configuration class to handle globals
+     - Added -recrack (shows already cracked APs in the possible targets, otherwise hides them)
+    -----------------
+    
 
     TODO:
-    
-    ignore root check when -cracked (afterward) (need root for -check?)
-    "cracked*" in list of AP's
     
     Restore same command-line switch names from v1
     
@@ -195,6 +200,7 @@ class RunConfiguration:
 
 
         # Program variables
+        self.SHOW_ALREADY_CRACKED = False   # Says whether to show already cracked APs as options to crack
         self.WIRELESS_IFACE     = ''    # User-defined interface
         self.TARGET_CHANNEL     = 0     # User-defined channel to scan on
         self.TARGET_ESSID       = ''    # User-defined ESSID of specific target to attack
@@ -277,6 +283,9 @@ class RunConfiguration:
                     self.WPA_DISABLE = True
                     self.WEP_DISABLE = True
                     set_encrypt = True
+                if args[i] == '-recrack':
+                    self.SHOW_ALREADY_CRACKED = True
+                    print GR+' [+]'+W+' including already cracked networks in targets'
                 if   args[i] == '-wpa': 
                     print GR+' [+]'+W+' targeting '+G+'WPA'+W+' encrypted networks (use '+G+'-wps'+W+' for WPS scan)'
                     self.WPA_DISABLE = False
@@ -529,10 +538,14 @@ def main():
             # Check if we have already cracked this target
             for already in RUN_CONFIG.CRACKED_TARGETS:
                 if already.bssid == targets[index].bssid:
-                    print R+'\n [!]'+O+' you have already cracked this access point\'s key!'+W
-                    print R+' [!] %s' % (C+already.ssid+W+': "'+G+already.key+W+'"')
-                    ri = raw_input(GR+' [+] '+W+'do you want to crack this access point again? ('+G+'y/'+O+'n'+W+'): ')
-                    if ri.lower() == 'n':
+                    if RUN_CONFIG.SHOW_ALREADY_CRACKED == True: 
+                        print R+'\n [!]'+O+' you have already cracked this access point\'s key!'+W
+                        print R+' [!] %s' % (C+already.ssid+W+': "'+G+already.key+W+'"')
+                        ri = raw_input(GR+' [+] '+W+'do you want to crack this access point again? ('+G+'y/'+O+'n'+W+'): ')
+                        if ri.lower() == 'n':
+                            targets.pop(index)
+                            index -= 1
+                    else:
                         targets.pop(index)
                         index -= 1
                     break
@@ -1053,6 +1066,21 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
                 exit_gracefully(1)
                 
             (targets, clients) = parse_csv(RUN_CONFIG.temp + 'wifite-01.csv')
+            
+            # Remove any already cracked networks if configured to do so
+            if RUN_CONFIG.SHOW_ALREADY_CRACKED == False:
+                index = 0
+                while index < len(targets):
+                    already = False
+                    for cracked in RUN_CONFIG.CRACKED_TARGETS:
+                        if targets[index].ssid.lower() == cracked.ssid.lower():
+                            already = True
+                        if targets[index].bssid.lower() == cracked.bssid.lower():
+                            already = True
+                    if already == True:
+                        targets.pop(index)
+                        index -= 1
+                    index += 1
             
             # If we are targeting a specific ESSID/BSSID, skip the scan once we find it.
             if RUN_CONFIG.TARGET_ESSID != '':
