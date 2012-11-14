@@ -2023,10 +2023,10 @@ def has_handshake_tshark(target, capfile):
             while line.find('  ') != -1: line = line.replace('  ', ' ')
             
             fields = line.split(' ')
-			
-			# ensure tshark dumped correct info
-			if len(fields) < 5:
-				continue
+		
+            # ensure tshark dumped correct info
+            if len(fields) < 5:
+                continue
 
             src = fields[2].lower()
             dst = fields[4].lower()
