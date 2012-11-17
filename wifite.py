@@ -1102,6 +1102,7 @@ def scan(channel=0, iface='', tried_rtl8187_fix=False):
                 if proc.poll() != None: # Check if process has finished
                     proc = Popen(['airodump-ng', iface], stdout=DN, stderr=PIPE)
                     if not tried_rtl8187_fix and proc.communicate()[1].find('failed: Unknown error 132') != -1:
+                        send_interrupt(proc)
                         if rtl8187_fix(iface):
                             return scan(channel=channel, iface=iface, tried_rtl8187_fix=True)
                 print R+' [!]'+O+' wifite is unable to generate airodump-ng output files'+W
@@ -1359,51 +1360,52 @@ def parse_csv(filename):
     """
     global RUN_CONFIG
     if not os.path.exists(filename): return ([], [])
-    try:
-        f = open(filename, 'r')
-        lines = f.read().split('\n')
-        f.close()
-    except IOError: return ([], [])
-    
-    hit_clients = False
     targets = []
     clients = []
-    for line in lines:
-        if line.startswith('Station MAC,'): hit_clients = True
-        if line.startswith('BSSID') or line.startswith('Station MAC') or line.strip() == '': continue
-        if not hit_clients: # Access points
-            c = line.split(', ', 13)
-            if len(c) <= 11: continue
-            cur = 11
-            c[cur] = c[cur].strip()
-            if not c[cur].isdigit(): cur += 1
-            if cur > len(c) - 1: continue
-            
-            ssid = c[cur+1]
-            ssidlen = int(c[cur])
-            ssid = ssid[:ssidlen]
-            
-            power = int(c[cur-4])
-            if power < 0: power += 100
-            
-            enc = c[5]
-            # Ignore non-WPA/WEP networks.
-            if enc.find('WPA') == -1 and enc.find('WEP') == -1: continue
-            if RUN_CONFIG.WEP_DISABLE and enc.find('WEP') != -1: continue
-            if RUN_CONFIG.WPA_DISABLE and RUN_CONFIG.WPS_DISABLE and enc.find('WPA') != -1: continue
-            enc = enc.strip()[:4]
-            
-            t = Target(c[0], power, c[cur-2].strip(), c[3], enc, ssid)
-            targets.append(t)
-        else: # Connected clients
-            c = line.split(', ')
-            if len(c) < 6: continue
-            bssid   = re.sub(r'[^a-zA-Z0-9:]', '', c[0])
-            station = re.sub(r'[^a-zA-Z0-9:]', '', c[5])
-            power   = c[3]
-            if station != 'notassociated':
-                c = Client(bssid, station, power)
-                clients.append(c)
+    try:
+        hit_clients = False        
+        with open(filename, 'rb') as csvfile:
+            targetreader = csv.reader(csvfile, delimiter=',')
+            for row in targetreader:
+                if len(row) < 2:
+                    continue
+                if not hit_clients:
+                    if len(row) < 14:
+                        continue
+                    if row[0].strip() == 'Station MAC':
+                        hit_clients = True
+                    if row[0].strip() == 'BSSID' or row[0].strip() == 'Station Mac': continue
+                    enc = row[5].strip()
+                    wps = False
+                    if enc.find('WPA') == -1 and enc.find('WEP') == -1: continue
+                    if RUN_CONFIG.WEP_DISABLE and enc.find('WEP') != -1: continue
+                    if RUN_CONFIG.WPA_DISABLE and RUN_CONFIG.WPS_DISABLE and enc.find('WPA') != -1: continue
+                    if enc == "WPA2WPA":
+                        enc = "WPA2"
+                        wps = True
+                    power = int(row[8].strip())
+                    
+                    ssid = row[13].strip()
+                    ssidlen = int(row[12].strip())
+                    ssid = ssid[:ssidlen]
+                    
+                    if power < 0: power += 100
+                    t = Target(row[0].strip(), power, row[10].strip(), row[3].strip(), enc, ssid)
+                    t.wps = wps
+                    targets.append(t)
+                else:
+                    if len(row) < 6:
+                        continue
+                    bssid   = re.sub(r'[^a-zA-Z0-9:]', '', row[0].strip())
+                    station = re.sub(r'[^a-zA-Z0-9:]', '', row[5].strip())
+                    power   = row[3].strip()
+                    if station != 'notassociated':
+                        c = Client(bssid, station, power)
+                        clients.append(c)
+    except IOError as e:
+        print "I/O error({0}): {1}".format(e.errno, e.strerror)
+        return ([], [])
+
     return (targets, clients)
 
 def wps_check_targets(targets, cap_file, verbose=True):
@@ -1880,12 +1882,16 @@ def wpa_get_handshake(iface, target, clients):
         
         target_clients = clients[:]
         client_index = -1
-        
+        start_time = time.time()
         # Deauth and check-for-handshake loop
         while not got_handshake and (RUN_CONFIG.WPA_ATTACK_TIMEOUT <= 0 or seconds_running < RUN_CONFIG.WPA_ATTACK_TIMEOUT):
-            
+            if proc_read.poll() != None:
+                print ""
+                print "airodump-ng exited with status " + str(proc_read.poll())
+                print ""
+                break
             time.sleep(1)
-            seconds_running += 1
+            seconds_running = int(time.time() - start_time)
             
             print "                                                          \r",
             print ' %s listening for handshake...\r' % \
