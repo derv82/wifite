@@ -2195,7 +2195,7 @@ class WPAAttack:
         print R+' [!]'+O+' unable to check for handshake: all handshake options are disabled!'
         exit_gracefully(1)
 
-    def strip_handshake(capfile):
+    def strip_handshake(self, capfile):
         """
             Uses Tshark or Pyrit to strip all non-handshake packets from a .cap file
             File in location 'capfile' is overwritten!
