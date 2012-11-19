@@ -279,7 +279,7 @@ class RunConfiguration:
 
         try:
             if not set_encrypt and (options.wpa or options.wep or options.wps):
-                self.PS_DISABLE = True
+                self.WPS_DISABLE = True
                 self.WPA_DISABLE = True
                 self.WEP_DISABLE = True
                 set_encrypt = True
