@@ -1371,7 +1371,7 @@ def parse_csv(filename):
     try:
         hit_clients = False        
         with open(filename, 'rb') as csvfile:
-            targetreader = csv.reader(csvfile, delimiter=',')
+            targetreader = csv.reader((line.replace('\0','') for line in csvfile), delimiter=',')
             for row in targetreader:
                 if len(row) < 2:
                     continue
