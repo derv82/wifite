@@ -2461,6 +2461,8 @@ class WEPAttack(Attack):
                 # Generate the aireplay-ng arguments based on attack_num and other params
                 cmd = self.get_aireplay_command(self.iface, attack_num, self.target, self.clients, client_mac)
                 if cmd == '': continue
+                if proc_aireplay != None:
+                    send_interrupt(proc_aireplay)
                 proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
                 
                 print '\r %s attacking "%s" via' % (GR+sec_to_hms(RUN_CONFIG.WEP_TIMEOUT)+W, G+self.target.ssid+W),
