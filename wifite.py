@@ -613,7 +613,7 @@ class RunConfiguration:
             revision = get_revision()
             if revision == -1:
                 print R+' [!]'+O+' unable to access GitHub'+W
-            elif revision > self.RUN_CONFIG.REVISION:
+            elif revision > self.REVISION:
                 print GR+' [!]'+W+' a new version is '+G+'available!'+W
                 print GR+' [-]'+W+'   revision:    '+G+str(revision)+W
                 response = raw_input(GR+' [+]'+W+' do you want to upgrade to the latest version? (y/n): ')
