@@ -24,8 +24,8 @@
      - Made a run configuration class to handle globals
      - Added -recrack (shows already cracked APs in the possible targets, otherwise hides them)
      - Changed the updater to grab files from GitHub and not Google Code
-	 - Use argparse to parse command-line arguments
-	 - -wepca flag now properly initialized if passed through CLI
+         - Use argparse to parse command-line arguments
+         - -wepca flag now properly initialized if passed through CLI
     -----------------
     
 
@@ -62,7 +62,7 @@
        - If failed to associate for x minutes, stop attack (same as no attempts?)
     
     MIGHTDO:
-      * WPA - crack (pyrit/cowpatty) (not really important)
+      * WPA - crack (cowpatty) (not really important)
       * Test injection at startup? (skippable via command-line switch)
      
 """
@@ -171,6 +171,7 @@ class RunConfiguration:
         self.WPA_DONT_CRACK       = False # Flag to skip cracking of handshakes
         self.WPA_DICTIONARY       = '/pentest/web/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
         if not os.path.exists(self.WPA_DICTIONARY): self.WPA_DICTIONARY = ''
+        self.WPA_CRACK_PYRIT      = False
 
         # Various programs to use when checking for a four-way handshake.
         # True means the program must find a valid handshake in order for wifite to recognize a handshake.
@@ -382,7 +383,7 @@ class RunConfiguration:
                 else: print GR+' [+]'+W+' WPA attack timeout set to %s' % (G+str(self.WPA_ATTACK_TIMEOUT)+W)
             if options.crack:
                 self.WPA_DONT_CRACK = False
-                print GR+' [+]'+W+' WPA cracking '+G+'enabled'+W
+                print GR+' [+]'+W+' WPA cracking with aircrack-ng '+G+'enabled'+W
                 if options.dic:
                     try: self.WPA_DICTIONARY = options.dic
                     except IndexError: print R+' [!]'+O+' no WPA dictionary given!'
@@ -394,6 +395,10 @@ class RunConfiguration:
                 else:
                     print R+' [!]'+O+' WPA dictionary file not given!'
                     exit_gracefully(1)
+            if options.crackpyrit:
+                    self.WPA_DONT_CRACK = False
+                    print GR+' [+]'+W+' WPA cracking with pyrit '+G+'enabled'+W
+
             if options.tshark:
                 self.WPA_HANDSHAKE_TSHARK = True
                 print GR+' [+]'+W+' tshark handshake verification '+G+'enabled'+W
@@ -529,8 +534,10 @@ class RunConfiguration:
         wpa_group.add_argument('-wpadt', help=argparse.SUPPRESS, action='store', dest='wpadt')
         wpa_group.add_argument('--strip', help='Strip handshake using tshark or pyrit.', default=False, action='store_true', dest='strip')
         wpa_group.add_argument('-strip', help=argparse.SUPPRESS, default=False, action='store_true', dest='strip')
-        wpa_group.add_argument('--crack', help='Crack WPA handshakes using [dic] wordlist file.', action='store_true', dest='crack')
+        wpa_group.add_argument('--crack', help='Crack WPA handshakes with aircrack-ng using [dic] wordlist file.', action='store_true', dest='crack')
         wpa_group.add_argument('-crack', help=argparse.SUPPRESS, action='store_true', dest='crack')
+        wpa_group.add_argument('--crackpyrit', help='Crack WPA handshakes with pyrit.', default=False, action='store_true', dest='crackpyrit')
+        wpa_group.add_argument('-crackpyrit', help=argparse.SUPPRESS,default=False, action='store_true', dest='crackpyrit')
         wpa_group.add_argument('--dict', help='Specificy dictionary to use when cracking WPA.', action='store', dest='dic')
         wpa_group.add_argument('-dict', help=argparse.SUPPRESS, action='store', dest='dic')
         wpa_group.add_argument('--aircrack', help='Verify handshake using aircrack.', default=False, action='store_true', dest='aircrack')
@@ -713,7 +720,10 @@ def main():
         if caps > 0 and not RUN_CONFIG.WPA_DONT_CRACK:
             print GR+' [+]'+W+' starting '+G+'WPA cracker'+W+' on %s%d handshake%s' % (G, caps, W if caps == 1 else 's'+W)
             for cap in RUN_CONFIG.WPA_CAPS_TO_CRACK:
-                wpa_crack(cap)
+                if RUN_CONFIG.WPA_CRACK_PYRIT:
+                    wpa_crack_pyrit(cap)
+                else:
+                    wpa_crack_aircrack(cap)
     
     print ''
     exit_gracefully(0)
@@ -925,6 +935,7 @@ def help():
     print sw+'\t-wpadt '+var+'<sec>  \t'+des+'time to wait between sending deauth packets (sec) '+de+'[10]'+W
     print sw+'\t-strip      \t'+des+'strip handshake using tshark or pyrit             '+de+'[off]'+W
     print sw+'\t-crack '+var+'<dic>\t'+des+'crack WPA handshakes using '+var+'<dic>'+des+' wordlist file    '+de+'[off]'+W
+    print sw+'\t-crackpyrit \t'+des+'crack WPA handshakes using pyrit'+de+'[off]'+W
     print sw+'\t-dict '+var+'<file>\t'+des+'specify dictionary to use when cracking WPA '+de+'[phpbb.txt]'+W
     print sw+'\t-aircrack   \t'+des+'verify handshake using aircrack '+de+'[on]'+W
     print sw+'\t-pyrit      \t'+des+'verify handshake using pyrit    '+de+'[off]'+W
@@ -2211,10 +2222,10 @@ def strip_handshake(capfile):
 # WPA CRACKING FUNCTIONS #
 ##########################
 
-def wpa_crack(capfile):
+def wpa_crack_aircrack(capfile):
     """
         Cracks cap file using aircrack-ng
-        This is crude and slow. If people want to crack using pyrit or cowpatty or oclhashcat,
+        This is crude and slow. If people want to crack using cowpatty or oclhashcat,
         they can do so manually.
     """
     global RUN_CONFIG
@@ -2285,6 +2296,76 @@ def wpa_crack(capfile):
             print "\r %s %s keys tested (%s%.2f keys/sec%s)   " % \
                    (GR+sec_to_hms(time.time() - start_time)+W, G+add_commas(kt)+W, G, kps, W),
             stdout.flush()
+            
+    except KeyboardInterrupt: print R+'\n (^C)'+O+' WPA cracking interrupted'+W
+    
+    send_interrupt(proc)
+    try: os.kill(proc.pid, SIGTERM)
+    except OSError: pass
+    
+    return cracked
+
+def wpa_crack_pyrit(capfile):
+    """
+        Cracks cap file using pyrit.
+        This can be more efficient than aircrack-ng, when pyrit is properly connected to
+        a GPU, or when setup in a cluster.
+    """
+    global RUN_CONFIG
+
+    print GR+' [0:00:00]'+W+' cracking %s with %s' % (G+capfile.ssid+W, G+'pyrit'+W)
+    start_time = time.time()
+    cracked = False
+    
+    remove_file(RUN_CONFIG.temp + 'out.out')
+    remove_file(RUN_CONFIG.temp + 'wpakey.txt')
+    
+    cmd = ['pyrit',
+           '-r', capfile.filename,
+           '-b', capfile.bssid,     # BSSID of target
+	   '--all-handshakes',      # Try all handshakes instead of just the best
+           'attack_batch']          # Attack with PMKs/passwords from the db
+    
+    proc = Popen(cmd, stdout=open(RUN_CONFIG.temp + 'out.out', 'a'), stderr=DN)
+    try:
+        kt  = 0 # Keys tested
+        kps = 0 # Keys per second
+        while True: 
+            time.sleep(1)
+
+            inf = open(RUN_CONFIG.temp + 'out.out', 'r')
+            lines = inf.read().split('\n')
+            inf.close()
+            outf = open(RUN_CONFIG.temp + 'out.out', 'w')
+            outf.close()
+            for line in lines:
+                match_status = re.search('Tried (\d*) PMKs so far \((\d\.\d)%\); (\d*) PMKs per second.', line)
+		if match_status:
+                    kt = float(match_status.group(1))
+                    kps = int(match_status.group(3))
+		match_cracked = re.search('The password is \'(.*)\'.', line)
+                if match_cracked:
+                    # Cracked
+		    key = match_cracked.group(1)
+                    RUN_CONFIG.WPA_FINDINGS.append('cracked wpa key for "%s" (%s): "%s"' % (G+capfile.ssid+W, G+capfile.bssid+W, C+key+W))
+                    RUN_CONFIG.WPA_FINDINGS.append('')
+                    t = Target(capfile.bssid, 0, 0, 0, 'WPA', capfile.ssid)
+                    t.key = key
+                    RUN_CONFIG.save_cracked(t)
+
+                    print GR+'\n [+]'+W+' cracked %s (%s)!' % (G+capfile.ssid+W, G+capfile.bssid+W)
+                    print GR+' [+]'+W+' key:    "%s"\n' % (C+key+W)
+                    cracked = True
+
+            if not cracked:
+                print "\r %s %s keys tested (%s%.2f keys/sec%s)   " % \
+                       (GR+sec_to_hms(time.time() - start_time)+W, G+add_commas(kt)+W, G, kps, W),
+             
+            if proc.poll() != None: # pyrit stopped
+                if not cracked:
+                    print R+'\n [!]'+R+'crack attempt failed'+O+': passphrase not in dictionary'+W
+                break
+	stdout.flush()
             
     except KeyboardInterrupt: print R+'\n (^C)'+O+' WPA cracking interrupted'+W
     
