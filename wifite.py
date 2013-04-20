@@ -505,11 +505,10 @@ class RunConfiguration:
             self.RUN_ENGINE.analyze_capfile(capfile)
         print ''
 
-    #
-    # options are doubled for backwards compatbility; will be removed soon and fully moved to GNU-style
-    #
-
     def build_opt_parser(self):
+        """ Options are doubled for backwards compatability; will be removed soon and
+		    fully moved to GNU-style 
+        """
         option_parser = argparse.ArgumentParser()
 
         # set commands
@@ -717,15 +716,19 @@ class RunEngine:
    
     def enable_monitor_mode(self, iface):
         """
+            First attempts to anonymize the MAC if requested; MACs cannot
+			be anonymized if they're already in monitor mode.
             Uses airmon-ng to put a device into Monitor Mode.
             Then uses the get_iface() method to retrieve the new interface's name.
             Sets global variable IFACE_TO_TAKE_DOWN as well.
             Returns the name of the interface in monitor mode.
         """
+        mac_anonymize(iface) 
         print GR+' [+]'+W+' enabling monitor mode on %s...' % (G+iface+W),
         stdout.flush()
         call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
         print 'done'
+        self.RUN_CONFIG.WIRELESS_IFACE = ''  # remove this reference as we've started its monitoring counterpart
         self.RUN_CONFIG.IFACE_TO_TAKE_DOWN = self.get_iface()
         if self.RUN_CONFIG.TX_POWER > 0:
             print GR+' [+]'+W+' setting Tx power to %s%s%s...' % (G, self.RUN_CONFIG.TX_POWER, W),
@@ -809,16 +812,26 @@ class RunEngine:
         proc  = Popen(['iwconfig'], stdout=PIPE, stderr=DN)
         iface = ''
         monitors = []
+        adapters = []
         for line in proc.communicate()[0].split('\n'):
             if len(line) == 0: continue
             if ord(line[0]) != 32: # Doesn't start with space
                 iface = line[:line.find(' ')] # is the interface
             if line.find('Mode:Monitor') != -1:
                 monitors.append(iface)
+            else: adapters.append(iface)
         
         if self.RUN_CONFIG.WIRELESS_IFACE != '':
             if monitors.count(self.RUN_CONFIG.WIRELESS_IFACE): return self.RUN_CONFIG.WIRELESS_IFACE
-            print R+' [!]'+O+' could not find wireless interface %s' % ('"'+R+self.RUN_CONFIG.WIRELESS_IFACE+O+'"'+W)
+            else:
+                if self.RUN_CONFIG.WIRELESS_IFACE in adapters:
+                    # valid adapter, enable monitor mode
+                    print R+' [!]'+O+' could not find wireless interface %s in monitor mode' % (R+'"'+R+self.RUN_CONFIG.WIRELESS_IFACE+'"'+O)
+                    return self.enable_monitor_mode(self.RUN_CONFIG.WIRELESS_IFACE)
+                else:
+                    # couldnt find the requested adapter
+                    print R+' [!]'+O+' could not find wireless interface %s' % ('"'+R+self.RUN_CONFIG.WIRELESS_IFACE+O+'"'+W)
+                    self.RUN_CONFIG.exit_gracefully(0)
     
         if len(monitors) == 1:
             return monitors[0] # Default to only device in monitor mode
@@ -837,21 +850,17 @@ class RunEngine:
         proc  = Popen(['airmon-ng'], stdout=PIPE, stderr=DN)
         for line in proc.communicate()[0].split('\n'):
             if len(line) == 0 or line.startswith('Interface'): continue
-            #monitors.append(line[:line.find('\t')])
             monitors.append(line)
-        
+       	
         if len(monitors) == 0:
             print R+' [!]'+O+" no wireless interfaces were found."+W
             print R+' [!]'+O+" you need to plug in a wifi device or install drivers.\n"+W
             self.RUN_CONFIG.exit_gracefully(0)
         elif self.RUN_CONFIG.WIRELESS_IFACE != '' and monitors.count(self.RUN_CONFIG.WIRELESS_IFACE) > 0:
-            mac_anonymize(monitor)
             return self.enable_monitor_mode(monitor)
     
         elif len(monitors) == 1:
             monitor = monitors[0][:monitors[0].find('\t')]
-            mac_anonymize(monitor)
-            
             return self.enable_monitor_mode(monitor)
         
         print GR+" [+]"+W+" available wireless devices:"
@@ -863,7 +872,6 @@ class RunEngine:
             ri = raw_input(" [+] select number of device to put into monitor mode (%s1-%d%s): " % (G, len(monitors), W))
         i = int(ri)
         monitor = monitors[i-1][:monitors[i-1].find('\t')]
-        mac_anonymize(monitor)
         
         return self.enable_monitor_mode(self, monitor)
         
@@ -1164,7 +1172,6 @@ class RunEngine:
         # The "get_iface" method anonymizes the MAC address (if needed)
         # and puts the interface into monitor mode.
         iface = self.get_iface()
-        
         self.RUN_CONFIG.THIS_MAC = get_mac_address(iface) # Store current MAC address
         
         (targets, clients) = self.scan(iface=iface, channel=self.RUN_CONFIG.TARGET_CHANNEL)
