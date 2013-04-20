@@ -873,7 +873,7 @@ class RunEngine:
         i = int(ri)
         monitor = monitors[i-1][:monitors[i-1].find('\t')]
         
-        return self.enable_monitor_mode(self, monitor)
+        return self.enable_monitor_mode(monitor)
         
     def scan(self, channel=0, iface='', tried_rtl8187_fix=False):
         """
