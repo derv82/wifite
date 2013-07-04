@@ -237,8 +237,7 @@ class RunConfiguration:
             # If Target isn't in the other list
             # Add and save to disk
             if new:
-                self.CRACKED_TARGETS.append(OC)
-                self.save_cracked()
+                self.save_cracked(OC)
 
     def ConfirmRunningAsRoot(self):
         if os.getuid() != 0:
