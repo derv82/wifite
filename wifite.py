@@ -234,10 +234,10 @@ class RunConfiguration:
                     if OC.bssid == NC.bssid:
                         new = False
                         break
-            # If Target isn't in the other list
-            # Add and save to disk
-            if new:
-                self.save_cracked(OC)
+                # If Target isn't in the other list
+                # Add and save to disk
+                if new:
+                    self.save_cracked(OC)
 
     def ConfirmRunningAsRoot(self):
         if os.getuid() != 0:
