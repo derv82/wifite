@@ -2570,7 +2570,7 @@ class WEPAttack(Attack):
                     if os.path.exists(self.RUN_CONFIG.temp + 'wepkey.txt'):
                         # Cracked!
                         infile = open(self.RUN_CONFIG.temp + 'wepkey.txt', 'r')
-                        key = infile.read().replace('\n', '')
+                        key = infile.read().replace('\n', '').decode("hex")
                         infile.close()
                         print '\n\n %s %s %s (%s)! key: "%s"' % (current_hms, G+'cracked', self.target.ssid+W, G+self.target.bssid+W, C+key+W)
                         self.RUN_CONFIG.WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (self.target.ssid, self.target.bssid, key))
@@ -2661,7 +2661,7 @@ class WEPAttack(Attack):
                     if os.path.exists(self.RUN_CONFIG.temp + 'wepkey.txt'):
                         # Cracked!
                         infile = open(self.RUN_CONFIG.temp + 'wepkey.txt', 'r')
-                        key = infile.read().replace('\n', '')
+                        key = infile.read().replace('\n', '').decode("hex")
                         infile.close()
                         print GR+'\n\n [endless] %s %s (%s)! key: "%s"' % (G+'cracked', self.target.ssid+W, G+self.target.bssid+W, C+key+W)
                         self.RUN_CONFIG.WEP_FINDINGS.append('cracked %s (%s), key: "%s"' % (self.target.ssid, self.target.bssid, key))
