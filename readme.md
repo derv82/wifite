@@ -39,7 +39,7 @@ Required Programs
 
 Please see [the installation guide](https://github.com/derv82/wifite/wiki/Installation) on the wiki for help installing any of the tools below.
 
-* [__Python 2.6.x or 2.7.x__](http://python.org/getit/). Wifite is a Python script and requires Python to run.
+* [__Python 2.7.x__](http://python.org/getit/). Wifite is a Python script and requires Python to run.
 
 * [__aircrack-ng suite__](http://aircrack-ng.org/).
   This is absolutely required.  The specific programs used in the suite are: 
