@@ -2288,7 +2288,7 @@ class WPAAttack(Attack):
             cmd = ['pyrit',
                  '-r', capfile,
                  '-o', output_file,
-                 'strip']
+                 'stripLive']
             call(cmd,stdout=DN, stderr=DN)
 
         elif program_exists('tshark'):
