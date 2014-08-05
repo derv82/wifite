@@ -209,6 +209,7 @@ class RunConfiguration:
         # Program variables
         self.SHOW_ALREADY_CRACKED = False   # Says whether to show already cracked APs as options to crack
         self.WIRELESS_IFACE     = ''    # User-defined interface
+        self.MONITOR_IFACE      = ''    # User-defined interface already in monitor mode
         self.TARGET_CHANNEL     = 0     # User-defined channel to scan on
         self.TARGET_ESSID       = ''    # User-defined ESSID of specific target to attack
         self.TARGET_BSSID       = ''    # User-defined BSSID of specific target to attack
@@ -366,6 +367,9 @@ class RunConfiguration:
             if options.interface:
                 self.WIRELESS_IFACE = options.interface
                 print GR+' [+]'+W+' set interface :%s' % (G+self.WIRELESS_IFACE+W)
+            if options.monitor_interface:
+                self.MONITOR_IFACE = options.monitor_interface
+                print GR+' [+]'+W+' set interface already in monitor mode :%s' % (G+self.MONITOR_IFACE+W)
             if options.essid:
                 try: self.TARGET_ESSID = options.essid
                 except ValueError: print R+' [!]'+O+' no ESSID given!'+W
@@ -561,6 +565,7 @@ class RunConfiguration:
         global_group.add_argument('-i', help='Wireless interface for capturing.', action='store', dest='interface')
         global_group.add_argument('--mac', help='Anonymize MAC address.', action='store_true', default=False, dest='mac_anon')
         global_group.add_argument('-mac', help=argparse.SUPPRESS, action='store_true', default=False, dest='mac_anon')
+        global_group.add_argument('--mon-iface', help='Interface already in monitor mode.', action='store', dest='monitor_interface')
         global_group.add_argument('-c', help='Channel to scan for targets.', action='store', dest='channel')
         global_group.add_argument('-e', help='Target a specific access point by ssid (name).', action='store', dest='essid')
         global_group.add_argument('-b', help='Target a specific access point by bssid (mac).', action='store', dest='bssid')
@@ -1203,9 +1208,13 @@ class RunEngine:
 
         self.initial_check() # Ensure required programs are installed.
 
-        # The "get_iface" method anonymizes the MAC address (if needed)
-        # and puts the interface into monitor mode.
-        iface = self.get_iface()
+        # Use an interface already in monitor mode if it has been provided,
+        if self.RUN_CONFIG.MONITOR_IFACE != '':
+            iface = self.RUN_CONFIG.MONITOR_IFACE
+        else:
+            # The "get_iface" method anonymizes the MAC address (if needed)
+            # and puts the interface into monitor mode.
+            iface = self.get_iface()
         self.RUN_CONFIG.THIS_MAC = get_mac_address(iface) # Store current MAC address
 
         (targets, clients) = self.scan(iface=iface, channel=self.RUN_CONFIG.TARGET_CHANNEL)
@@ -1525,6 +1534,7 @@ def help():
     print sw+'\t-all         \t'+des+'attack all targets.              '+de+'[off]'+W
     #print sw+'\t-pillage     \t'+des+'attack all targets in a looping fashion.'+de+'[off]'+W
     print sw+'\t-i '+var+'<iface>  \t'+des+'wireless interface for capturing '+de+'[auto]'+W
+    print sw+'\t-mon-iface '+var+'<monitor_interface>  \t'+des+'interface in monitor mode for capturing '+de+'[auto]'+W
     print sw+'\t-mac         \t'+des+'anonymize mac address            '+de+'[off]'+W
     print sw+'\t-c '+var+'<channel>\t'+des+'channel to scan for targets      '+de+'[auto]'+W
     print sw+'\t-e '+var+'<essid>  \t'+des+'target a specific access point by ssid (name)  '+de+'[ask]'+W
