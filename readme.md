@@ -7,6 +7,58 @@ An automated wireless attack tool.
 What's New?
 -----------
 
+### Version 2.0 Rev 87 ###
+
+#### Changes: ####
+- Save decloaked hidden network.
+- Decloaking hidden networks in one go.
+- Add lots of filters (e.g. WPA+ for WPA network with clients, WPA1 for WPA network with one client, -p<20 to exclude network with power below 20dB etc).
+- Timeout when scanning networks.
+- List wireless AP in two columns 
+- List number of clients for each wireless AP, instead of just the word "CLIENT(S)"
+- Max rows to show when scanning networks
+- Tidy up the help page (e.g. separate the interface setting into new INTERFACE section)
+- Default to skip network if WPA handshake file is found (can be override by --recapture)
+- Tidy up message printing (*incomplete*)
+
+#### Known issue: ####
+- The newly added code is somehow messy. I will add more comments on it soon
+
+#### TODO: ####
+##### GENERAL #####
+* Restore same command-line switch names from v1
+* If device already in monitor mode, check for and, if applicable, use macchanger
+
+##### WPS #####
+* Mention reaver automatically resumes sessions
+* Warning about length of time required for WPS attack (*hours*)
+* Show time since last successful attempt
+* Percentage of tries/attempts ?
+* Update code to work with reaver 1.4 ("x" sec/att)
+
+##### WEP ##### 
+* Ability to pause/skip/continue    (done, not tested)
+* Option to capture only IVS packets (uses --output-format ivs,csv)
+   - not compatible on older aircrack-ng's.
+      + Just run "airodump-ng --output-format ivs,csv", "No interface specified" = works
+   - would cut down on size of saved .caps
+
+##### reaver ##### 
+* MONITOR ACTIVITY!
+* Enter ESSID when executing (?)
+* Ensure WPS key attempts have begun.
+* If no attempts can be made, stop attack
+   - During attack, if no attempts are made within X minutes, stop attack & Print
+   - Reaver's output when unable to associate:
+     [!] WARNING: Failed to associate with AA:BB:CC:DD:EE:FF (ESSID: ABCDEF)
+   - If failed to associate for x minutes, stop attack (same as no attempts?)
+
+##### MIGHTDO ##### 
+* WPA - crack (pyrit/cowpatty) (not really important)
+* Test injection at startup? (skippable via command-line switch)
+
+### Version 2.0 ###
+
 The biggest change from version 1 is support for ["reaver"](http://reaver-wps.googlecode.com/), a Wifi-Protected Setup (WPS) attack tool.  Reaver can compromise the PIN and PSK for many routers that have WPS enabled, usually within hours.
 
 Other changes include a complete code re-write with bug fixes and added stability.  Due to problems with the Python Tkinter suite, the GUI has been left out of this latest version.
@@ -71,4 +123,4 @@ Licensing
 
 Wifite is licensed under the GNU General Public License version 2 (GNU GPL v2).
 
-(C) 2010-2012 Derv Merkler
+(C) 2010-2014 Derv Merkler
