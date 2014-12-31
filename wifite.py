@@ -148,12 +148,18 @@ class Target:
     def __str__(self):
         return re.sub(r'[^a-zA-Z0-9]', '', self.ssid) \
                   + '_' + self.bssid.replace(':', '-') + '_' + self.encryption.lower()
-    def equal(target):
+    def equal(self,target):
         #if target is
         if target.bssid == self.bssid:
             return True
-
-
+    def find_clients(self, clients):
+        associated_clients=[]
+        for client in clients:
+            if client.station == self.bssid:
+                associated_clients.append(client)
+        return associated_clients
+    def count_clients(self, clients):
+        return len(self.find_clients(clients))
 class Client:
     """
         Holds data for a Client (device connected to Access Point/Router)
@@ -172,7 +178,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 87;
+        self.REVISION = 88;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -187,7 +193,7 @@ class RunConfiguration:
         self.COLUMN = 1     # Numbers of columns in scanning state
         self.SPACING = 1    # Spacing between Columns
         self.SCAN_MAX_ROW_SHOW = 0
-
+        self.SCAN_DEAUTH_TIMEOUT = 10
         # WPA variables
         #self.WPA_DISABLE = False  # Flag to skip WPA handshake capture
         self.WPA_ATTACK_DISABLE=False
@@ -287,8 +293,8 @@ class RunConfiguration:
             exit(1)
 
     def ConfirmCorrectPlatform(self):
-        if not os.uname()[0].startswith("Linux") and not 'Darwin' in os.uname()[0]:  # OSX support, 'cause why not?
-            print O + ' [!]' + R + ' WARNING:' + G + ' wifite' + W + ' must be run on ' + O + 'linux' + W
+        if not 'uname' in dir(os) or not os.uname()[0].startswith("Linux") and not 'Darwin' in os.uname()[0]:  # OSX support, 'cause why not?
+            println_error(G + ' wifite' + W + ' must be run on ' + O + 'linux' + W)
             exit(1)
 
     def CreateTempFolder(self):
@@ -297,7 +303,7 @@ class RunConfiguration:
         self.temp = mkdtemp(prefix='wifite' + str(time.time()))
         if not self.temp.endswith(os.sep):
             self.temp += os.sep
-        print GR + " [+]" + W + " temp folder %s" % self.temp
+        println_info("temp folder %s" % self.temp)
     def load_decloaked(self):
         result = []
         filename=self.DECLOAKED_RECORD
@@ -377,7 +383,7 @@ class RunConfiguration:
         """
         # Remove temp files and folder
         
-        if os.path.exists(self.temp):
+        if self.temp != "" and os.path.exists(self.temp):
             for f in os.listdir(self.temp):
                 os.remove(self.temp + f)
             os.rmdir(self.temp)
@@ -385,7 +391,7 @@ class RunConfiguration:
         self.RUN_ENGINE.disable_monitor_mode()
         # Change MAC address back if spoofed
         mac_change_back()
-        print GR + " [+]" + W + " quitting"  # wifite will now exit"
+        println_info("quitting")  # wifite will now exit"
         print ''
         # GTFO
         exit(code)
@@ -414,11 +420,16 @@ class RunConfiguration:
                 self.SHOW_ALREADY_CRACKED = True
                 println_info('including already cracked networks in targets.')
             if options.timeout != None:
-                if options.timeout>=0:
-                    self.SCAN_TIMEOUT=options.timeout
-                    println_info('timeout in scanning state: ' + G + str(options.timeout) + W)
+                if options.timeout.isdigit():
+                    if int(options.timeout.isdigit())>=0:
+                        self.SCAN_TIMEOUT=options.timeout
+                    else:
+                        println_error('invalid timeout value %s' % (G + str(options.timeout) + W))
+
+                    #println_info('criteria to stop scanning state: ' + G + str(options.timeout) + W)
                 else:
-                    println_error('invalid timeout value %s' % (G + str(options.timeout) + W))
+                    self.SCAN_TIMEOUT=options.timeout
+                    #println_error('invalid timeout value %s' % (G + str(options.timeout) + W))
             if options.load != None:
                 self.SCAN_FILE_LOAD=options.load
             if options.save != None:
@@ -473,11 +484,10 @@ class RunConfiguration:
                     self.TARGET_CHANNEL = channel
                     println_info('Filter channel in scanning state: %s' % (G + str(self.TARGET_CHANNEL) + W))
                 else:
-                    print O + ' [!]' + R + ' invalid channel: ' + O + str(options.channel) + W
+                    println_warning('invalid channel: ' + O + str(options.channel) + W)
 
             if options.mac_anon:
-                println_info('mac address anonymizing ' + G + 'enabled')
-                print O + '      not: only works if device is not already in monitor mode!' + W
+                println_info('mac address anonymizing ' + G + 'enabled' + W + "\n" +'      not: only works if device is not already in monitor mode!' + W)
                 self.DO_NOT_CHANGE_MAC = False
             if options.interface:
                 self.WIRELESS_IFACE = options.interface
@@ -530,7 +540,7 @@ class RunConfiguration:
                 #except IndexError:
                 #    println_error('no TX power level given!')
                 #else:
-            #self.DEBUG=options.debug
+            self.DEBUG=options.debug
             if options.quiet:
                 self.VERBOSE_APS = False
                 println_info('list of APs during scan ' + O + 'disabled')
@@ -556,10 +566,9 @@ class RunConfiguration:
                 println_info('' + W + 'previously cracked access points' + W + ':')
                 for victim in self.CRACKED_TARGETS:
                     if victim.wps != False:
-                        print '     %s (%s) : "%s" - Pin: %s' % (
-                        C + victim.ssid + W, C + victim.bssid + W, G + victim.key + W, G + victim.wps + W)
+                        println_info('     %s (%s) : "%s" - Pin: %s' % (C + victim.ssid + W, C + victim.bssid + W, G + victim.key + W, G + victim.wps + W))
                     else:
-                        print '     %s (%s) : "%s"' % (C + victim.ssid + W, C + victim.bssid + W, G + victim.key + W)
+                        println_info('     %s (%s) : "%s"' % (C + victim.ssid + W, C + victim.bssid + W, G + victim.key + W))
                 print ''
                 self.exit_gracefully(0)
             # WPA
@@ -683,9 +692,9 @@ class RunConfiguration:
             if options.wpsratio != None:
                 if options.wpsratio > 0:
                     self.WPS_RATIO_THRESHOLD = options.wpsratio
-                    print GR + ' [+]' + W + ' minimum WPS tries/attempts threshold set to %s' % (G + str(self.WPS_RATIO_THRESHOLD) + W)
+                    println_info('minimum WPS tries/attempts threshold set to %s' % (G + str(self.WPS_RATIO_THRESHOLD) + W))
                 else:
-                    print R + ' [!]' + O + ' invalid percentage: %s' % (R + options.wpsratio + W)
+                    println_warning('invalid percentage: %s' % (R + options.wpsratio + W))
             
             if options.wpsretry:
                 if options.wpsretry >= 0:
@@ -697,11 +706,11 @@ class RunConfiguration:
                     
 
         except IndexError:
-            print '\nIndex Error!\n\n'
+            println_warning('\nIndex Error!\n\n')
 
         if capfile != '':
             self.RUN_ENGINE.analyze_capfile(capfile)
-        print ''
+        #print ''
 
     def build_opt_parser(self):
         """ Options are doubled for backwards compatability; will be removed soon and
@@ -734,8 +743,8 @@ class RunConfiguration:
         target_group = option_parser.add_argument_group('TARGET')
         target_group.add_argument('-l','--load', metavar='[file]', help='Load airodump file instead of scanning.', action='store', dest='load')
         target_group.add_argument('-v','--save', metavar='[file]', help='Save airodump file.', action='store', dest='save')
-        target_group.add_argument('-s','--show', metavar='[filters]', help='Filter targets in scanning state.' + 'Syntax: numbers, range (e.g. "1-4"), power level (e.g. "p[>,>=,=,<=,<][POWER]"), channel (e.g. "c[CHANNEL,range])", wps disabled or enabled (e.g. "wps0", "wps1"), Cipher (e.g. "wep" or "wpa", "wep[NUM OF CLIENT]" or "wpa[NUM OF CLIENT]", "wep+" or "wpa+" for network with clients), ESSID (e.g. "e[ESSID]") or BSSID (e.g. "b[11:22:33]"). Multiple entries separated by comma supported. Add "-" or "=" before to remove targets.', action='store', dest='show')
-        target_group.add_argument('-t','--timeout', metavar='[secs]', type=int, help='Max time in scanning state', action='store', dest='timeout')
+        target_group.add_argument('-s','--show', metavar='[filters]', help='Filter targets in scanning state.' + 'Syntax: numbers, range (e.g. "1-4"), power level (e.g. "p[>,>=,=,<=,<][POWER]"), channel (e.g. "c[CHANNEL,range])", wps disabled or enabled (e.g. "wps0", "wps1"), Cipher (e.g. "wep" or "wpa", "wep[NUM OF CLIENT]" or "wpa[NUM OF CLIENT]", "wep+" or "wpa+" for network with clients), ESSID (e.g. "e[ESSID]") or BSSID (e.g. "b[11:22:33]"). Multiple filters separated by comma supported. Add "-" or "=" before to remove targets.', action='store', dest='show')
+        target_group.add_argument('-t','--timeout', metavar='[criteria]', help='Criteria to stop scanning state. Numbers = seconds, e[ESSID] or b[BSSID]= timeout when target is found, n[>,>=,=,<=,<][num of targets] = timeout when total targets more/equal/less than certain numbers. Multiple criteria separated by comma supported.', action='store', dest='timeout')
         target_group.add_argument('-c','--channel', metavar='[N]', type=int, help='Filter targets with specific channel in scanning state (equivalent to "--show c[N]").', action='store', dest='channel')
         target_group.add_argument('--power', metavar='[N]',type=int, help='Filter targets with signal strength > [N] in scanning state (equivalent to "--show p\>[N]").', action='store',
                                   dest='power')
@@ -865,7 +874,7 @@ class RunConfiguration:
         others_group.add_argument('--update', help='Check and update Wifite.', default=False, action='store_true',
                                   dest='update')
         others_group.add_argument('-update', help=argparse.SUPPRESS, default=False, action='store_true', dest='update')
-        #others_group.add_argument('--debug', help='Print more debug information.', action='store_true', dest='debug')
+        others_group.add_argument('--debug', help='Print lots of debug information.', action='store_true', dest='debug')
         
         
         return option_parser
@@ -876,7 +885,7 @@ class RunConfiguration:
             replaces this script with the latest from the repo
         """
         try:
-            print GR + ' [!]' + W + ' upgrading requires an ' + G + 'internet connection' + W
+            println_warning('upgrading requires an ' + G + 'internet connection' + W)
             println_info('checking for latest version...')
             revision = get_revision()
             if revision == -1:
@@ -897,7 +906,7 @@ class RunConfiguration:
                 except IOError:
                     page = ''
                 if page == '':
-                    print R + ' [+] ' + O + 'unable to download latest version' + W
+                    println_error('unable to download latest version' + W)
                     self.exit_gracefully(1)
 
                 # Create/save the new script
@@ -931,10 +940,10 @@ class RunConfiguration:
                     println_error('upgrade script returned unexpected code: ' + str(returncode))
                     self.exit_gracefully(1)
 
-                print GR + ' [+] ' + G + 'updated!' + W + ' type "./' + this_file + '" to run again'
+                println_info('updated!' + W + ' type "./' + this_file + '" to run again')
 
             else:
-                print GR + ' [-]' + W + ' your copy of wifite is ' + G + 'up to date' + W
+                println_info('your copy of wifite is ' + G + 'up to date' + W)
 
         except KeyboardInterrupt:
             print R + '\n (^C)' + O + ' wifite upgrade interrupted' + W
@@ -946,42 +955,76 @@ class RunEngine:
         self.RUN_CONFIG = run_config
         self.RUN_CONFIG.RUN_ENGINE = self
 
-    def initial_check(self):
+    def programs_check(self):
         """
             Ensures required programs are installed.
         """
-        airs = ['aircrack-ng', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'packetforge-ng']
-        for air in airs:
-            if program_exists(air): continue
-            println_error('required program not found: %s' % (R + air + W))
-            println_error('this program is bundled with the aircrack-ng suite:')
-            println_error('       ' + C + 'http://www.aircrack-ng.org/')
-            println_error('or: ' + W + 'sudo apt-get install aircrack-ng\n')
-            self.RUN_CONFIG.exit_gracefully(1)
+        programs=[
+            { 'name':'aircrack-ng', 'url': 'http://www.aircrack-ng.org', 'install':['sudo','apt-get','install','aircrack-ng'], 'files': ['aircrack-ng', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'packetforge-ng'], 'critical': True },
+            { 'name':'iw', 'url': '','install':'apt-get install aircrack-ng','install':['sudo','apt-get','install','iw'], 'files': ['iw'], 'critical': True },
+            { 'name':'reaver', 'url': 'http://code.google.com/p/reaver-wps','install':['sudo','apt-get','install','reaver'], 'files': ['reaver',['walsh','wash']], 'critical': True },
+            { 'name':'cowpatty', 'url': 'http://sf.net/cowpatty', 'install':['sudo','apt-get','install','cowpatty'], 'files': ['cowpatty'], 'critical': False},
+            { 'name':'pyrit', 'url': 'http://code.google.com/p/pyrit', 'install':['sudo','apt-get','install','pyrit'], 'files': ['pyrit'], 'critical': False },
+            { 'name':'tshark', 'url':'http://www.wireshark.org', 'install':['sudo','apt-get','install','wireshark'], 'files': ['cowpatty'], 'critical': False }]
+        incomplete=[]
+        for program in programs:
+            not_found=[]
+            message = ''
+            for f in program['files']:
+                if isinstance(f,list):
+                    found=False
+                    for p in f:
+                        if program_exists(p):
+                            found=True
+                    if not found:
+                        not_found+=f
+                else:
+                    if not program_exists(f):
+                        not_found.append(f)
+            if len(not_found):
+                incomplete.append(program)
+                message='program "%s"' % ("\",\"".join(not_found))
+                if not program['name'] in program['files']:
+                        ' from "%s" suite'
+                message += ' cannot be found!'
+                if program['url'] != '':
+                    message += ' You may obtain it from "%s".' % (G + program['url'] + O)
+                
+                if program['critical']:
+                    message = 'critical ' + message
+                    println_error(message)
+                else:
+                    println_warning(message)
+                
+                if len(program['install']):
+                    response = raw_input(GR + ' [+]' + W + ' do you want to install it now? (y/n): ')
+                    if response.lower().startswith('y'):
+                        result=call(program['install'])
 
-        if not program_exists('iw'):
-            println_error('airmon-ng requires the program %s\n' % (R + 'iw' +W))
-            self.RUN_CONFIG.exit_gracefully(1)
-
-        printed = False
-        # Check reaver
-        if not program_exists('reaver'):
-            printed = True
-            println_error('the program ' + R + 'reaver' + O + ' is required for WPS attacks')
-            print R + '    ' + O + '   available at ' + C + 'http://code.google.com/p/reaver-wps' + W
-            self.RUN_CONFIG.WPS_ATTACK_DISABLE = True
-        elif not program_exists('walsh') and not program_exists('wash'):
-            printed = True
-            println_error('reaver\'s scanning tool ' + R + 'walsh' + O + ' (or ' + R + 'wash' + O + ') was not found')
-            println_error('please re-install reaver or install walsh/wash separately')
+                        if program['critical'] and result != 0:
+                            return False
+                    else:
+                        if program['critical']:
+                            return False
+                            
+                else:
+                    if program['critical']:
+                        return False
+                        #self.RUN_CONFIG.exit_gracefully(1)
+        return True
+        # printed = False
+        # # Check reaver
+        # if not program_exists('reaver'):
+        #     printed = True
+        #     println_error('the program ' + R + 'reaver' + O + ' is required for WPS attacks')
+        #     print R + '    ' + O + '   available at ' + C + 'http://code.google.com/p/reaver-wps' + W
+        #     self.RUN_CONFIG.WPS_ATTACK_DISABLE = True
+        # elif not program_exists('walsh') and not program_exists('wash'):
+        #     printed = True
+        #     println_error('reaver\'s scanning tool ' + R + 'walsh' + O + ' (or ' + R + 'wash' + O + ') was not found')
+        #     println_error('please re-install reaver or install walsh/wash separately')
 
         # Check handshake-checking apps
-        recs = ['tshark', 'pyrit', 'cowpatty']
-        for rec in recs:
-            if program_exists(rec): continue
-            printed = True
-            println_error('the program %s is not required, but is recommended%s' % (R + rec + O, W))
-        if printed: print ''
 
     def enable_monitor_mode(self, iface):
         """
@@ -992,6 +1035,13 @@ class RunEngine:
             Sets global variable IFACE_TO_TAKE_DOWN as well.
             Returns the name of the interface in monitor mode.
         """
+        # wlan=Interface(iface)
+        # if not self.RUN_CONFIG.DO_NOT_CHANGE_MAC:
+        #     wlan.randomize_mac()
+        # mon=wlan.enable_monitor_mode()
+        # self.RUN_CONFIG.IFACE_TO_TAKE_DOWN=mon
+        # return self.RUN_CONFIG.IFACE_TO_TAKE_DOWN
+
         mac_anonymize(iface)
         print_info('enabling monitor mode on %s...' % (G + iface + W))
         stdout.flush()
@@ -1012,7 +1062,7 @@ class RunEngine:
             We want to disable this before we exit, so we will do that.
         """
         if self.RUN_CONFIG.IFACE_TO_TAKE_DOWN == '': return
-        print_info('disabling monitor mode on %s...' % (G + self.RUN_CONFIG.IFACE_TO_TAKE_DOWN + W))
+        print GR + ' [+]' + W + ' disabling monitor mode on %s...' % (G + self.RUN_CONFIG.IFACE_TO_TAKE_DOWN + W),
         stdout.flush()
         call(['airmon-ng', 'stop', self.RUN_CONFIG.IFACE_TO_TAKE_DOWN], stdout=DN, stderr=DN)
         print 'done'
@@ -1038,7 +1088,7 @@ class RunEngine:
             println_error('you may want to disconnect/reconnect your wifi device')
             self.RUN_CONFIG.exit_gracefully(1)
 
-        print O + " [!]" + W + " attempting " + O + "RTL8187 'Unknown Error 132'" + W + " fix..."
+        println_warning("attempting " + O + "RTL8187 'Unknown Error 132'" + W + " fix...")
 
         original_iface = iface
         # Take device out of monitor mode
@@ -1061,10 +1111,23 @@ class RunEngine:
         print_and_exec(['airmon-ng', 'start', original_iface])
 
         print '\r                                                        \r',
-        print O + ' [!] ' + W + 'restarting scan...\n'
+        println_warning('restarting scan...\n')
 
         return True
-
+    def list_iface(self):
+        proc = Popen(['iwconfig'], stdout=PIPE, stderr=DN)
+        iface = ''
+        monitors = []
+        adapters = []
+        for line in proc.communicate()[0].split('\n'):
+            if len(line) == 0: continue
+            if ord(line[0]) != 32:  # Doesn't start with space
+                iface = line[:line.find(' ')]  # is the interface
+            if line.find('Mode:Monitor') != -1:
+                monitors.append(iface)
+            else:
+                adapters.append(iface)
+        return (monitors, adapters)
     def get_iface(self):
         """
             Get the wireless interface in monitor mode.
@@ -1078,18 +1141,7 @@ class RunEngine:
             println_info('scanning for wireless devices...')
             self.RUN_CONFIG.PRINTED_SCANNING = True
 
-        proc = Popen(['iwconfig'], stdout=PIPE, stderr=DN)
-        iface = ''
-        monitors = []
-        adapters = []
-        for line in proc.communicate()[0].split('\n'):
-            if len(line) == 0: continue
-            if ord(line[0]) != 32:  # Doesn't start with space
-                iface = line[:line.find(' ')]  # is the interface
-            if line.find('Mode:Monitor') != -1:
-                monitors.append(iface)
-            else:
-                adapters.append(iface)
+        (monitors, adapters) = self.list_iface()
 
         if self.RUN_CONFIG.WIRELESS_IFACE != '':
             if monitors.count(self.RUN_CONFIG.WIRELESS_IFACE):
@@ -1109,7 +1161,7 @@ class RunEngine:
         if len(monitors) == 1:
             return monitors[0]  # Default to only device in monitor mode
         elif len(monitors) > 1:
-            print GR + " [+]" + W + " interfaces in " + G + "monitor mode:" + W
+            println_info("interfaces in " + G + "monitor mode:" + W)
             for i, monitor in enumerate(monitors):
                 print "  %s. %s" % (G + str(i + 1) + W, G + monitor + W)
             ri = raw_input("%s [+]%s select %snumber%s of interface to use for capturing (%s1-%d%s): %s" % \
@@ -1126,8 +1178,8 @@ class RunEngine:
             monitors.append(line)
 
         if len(monitors) == 0:
-            print R + ' [!]' + O + " no wireless interfaces were found." + W
-            print R + ' [!]' + O + " you need to plug in a wifi device or install drivers.\n" + W
+            println_error("no wireless interfaces were found." + W)
+            println_error("you need to plug in a wifi device or install drivers.\n" + W)
             self.RUN_CONFIG.exit_gracefully(0)
         elif self.RUN_CONFIG.WIRELESS_IFACE != '' and monitors.count(self.RUN_CONFIG.WIRELESS_IFACE) > 0:
             monitor = monitors[0][:monitors[0].find('\t')]
@@ -1137,7 +1189,7 @@ class RunEngine:
             monitor = monitors[0][:monitors[0].find('\t')]
             return self.enable_monitor_mode(monitor)
 
-        print GR + " [+]" + W + " available wireless devices:"
+        println_info("available wireless devices:")
         for i, monitor in enumerate(monitors):
             print "  %s%d%s. %s" % (G, i + 1, W, monitor)
 
@@ -1172,7 +1224,7 @@ class RunEngine:
             proc = Popen(command, stdout=DN, stderr=DN)
 
             time_started = time.time()
-            print GR + ' [+] ' + G + 'initializing scan' + W + ' (' + G + iface + W + '), updates at 5 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.'
+            println_info('initializing scan' + W + ' (' + G + iface + W + '), updates at 5 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.')
             (targets, clients) = ([], [])
             try:
                 deauth_sent_targets = []
@@ -1309,81 +1361,54 @@ class RunEngine:
                     #if time.time() - deauth_sent > 5: # channel != 0 and
                         #deauth_sent = time.time()
                     #'''    
-                    for t in targets:
-                        if t.ssid == '':
-                            for d in self.RUN_CONFIG.DECLOAKED_TARGETS:
-                                if t.bssid == d.bssid:
-                                    t.ssid=d.ssid
-                                    #messages.append( G + ' [!] ' + W + '%s loaded decloak history for "%s (%s)"                     ' % \
-                                    #          (GR + sec_to_hms(time.time() - time_started) + W, G + t.ssid + W, G + t.bssid))
-                                    break
-
-                        if t.ssid == '':
-                            println_debug("deauthing " + t.bssid)
+                    targets=self.add_known_ssid(targets)
+                    for target in targets:
+                        if target.ssid == '':
+                            println_debug("target has blank ssid: " + target.bssid)
                             deauth=True
                             #Remove expired records
                             for i,deauth_sent_target in enumerate(deauth_sent_targets):
-                                if time.time() - deauth_sent_targets_time[i] > 5:
+                                if time.time() - deauth_sent_targets_time[i] > self.RUN_CONFIG.SCAN_DEAUTH_TIMEOUT:
+                                    println_debug(deauth_sent_target.ssid + " " + deauth_sent_target.bssid + " removed!")
                                     deauth_sent_targets.remove(deauth_sent_target)
                                     deauth_sent_targets_time.remove(deauth_sent_targets_time[i])
-                                    continue
+                                     
+                                    #continue
                             #Check if target has been deauthed recently
                             for i,deauth_sent_target in enumerate(deauth_sent_targets):
-                                if deauth_sent_target.bssid == t.bssid:
+                                if deauth_sent_target.bssid == target.bssid:
+                                    println_debug("skipped: " + deauth_sent_target.ssid + " " + deauth_sent_target.bssid)
                                     deauth=False
                                     break
 
-    #                            print 'Unknown SSIDs - ' + t.bssid
-                            
-                            #stdout.flush()
-                            # Time to deauth
                             if deauth:
-                                cmd = ['aireplay-ng',
-                                       '--ignore-negative-one',
-                                       '--deauth', str(self.RUN_CONFIG.WPA_DEAUTH_COUNT),
-                                       '-a', t.bssid]
-                                associated_clients=self.find_clients(target, clients)
-                                if len(associated_clients):
-                                    bssid=associated_clients[random.randint(0, len(associated_clients)-1)].bssid
-                                    cmd.append('-c')
-                                    cmd.append(bssid)
-                                    messages.append(G + ' [!] ' + W + "%s deauthing hidden access point (%s) with client (%s)" % \
-                                    (GR + sec_to_hms(time.time() - time_started) + W, G + t.bssid + W, G + bssid + W  ))
-                                    #print G + ' [!] ' + W + "%s deauthing hidden access point (%s) with client (%s)" % \
-                                    #(GR + sec_to_hms(time.time() - time_started) + W, G + t.bssid) + W, G + bssid + W  
-                                else:
-                                    messages.append(G + ' [!] ' + W + "%s deauthing hidden access point (%s) with no client" % \
-                                    (GR + sec_to_hms(time.time() - time_started) + W, G + t.bssid + W))
-                                    #print G + ' [!] ' + W + "%s deauthing hidden access point (%s) with no client" % \
-                                    #(GR + sec_to_hms(time.time() - time_started) + W, G + t.bssid + W)
-                                cmd.append(iface)
-
-                                proc_aireplay=Popen(cmd, stdout=DN, stderr=DN)
-                                deauth_sent_targets.append(t)
+                                println_debug("deauthing %s (%s)" % (target.ssid, target.bssid))
+                                messages +=self.deauth(target,clients,time_started,iface)
+                                deauth_sent_targets.append(target)
                                 deauth_sent_targets_time.append(time.time())
-                                #proc_aireplay.wait()
+                                
                                 #time.sleep(0.5)
                         else:
                             for ot in old_targets:
-                                if ot.ssid == '' and ot.bssid == t.bssid:
+                                if ot.ssid == '' and ot.bssid == target.bssid:
                                     messages.append( ' [!] %s successfully decloaked "%s" (%s)' % \
-                                          (GR + sec_to_hms(time.time() - time_started) + W, G + t.ssid + W, G + t.bssid))
+                                          (GR + sec_to_hms(time.time() - time_started) + W, G + target.ssid + W, G + target.bssid))
                                     #Save decloaked result
-                                    RUN_CONFIG.save_decloaked(t)
+                                    RUN_CONFIG.save_decloaked(target)
                                     force_print = True
-                    
+                    time.sleep(2)
                     println_debug ('Checking WPS...' + hex(channel) + '\n')
                     if len(targets) > 0:
                         if not self.RUN_CONFIG.WPS_CHECK_DISABLE:
                             wps_check_targets(targets, self.RUN_CONFIG.temp + 'wifite-01.cap', False) #self.RUN_CONFIG.VERBOSE_APS)
                     
                     println_debug('Checking if should print...')
-                    if force_print or len(old_targets) != len(targets) or time.time() - last_print_time > 5 :
+                    if force_print  or time.time() - last_print_time > 5 :
                         os.system('clear')    
                         targets = sorted(targets, key=lambda t: t.power, reverse=True)
                         self.print_targets(targets, clients, self.RUN_CONFIG.SCAN_MAX_ROW_SHOW, self.RUN_CONFIG.COLUMN,self.RUN_CONFIG.SPACING)
                           
-                        messages.append(' %s %s wireless networks. %s target%s and %s client%s found. %s %s' % (
+                        print(' %s %s wireless networks. %s target%s and %s client%s found. %s %s' % (
                             GR + sec_to_hms(time.time() - time_started) + W, G + 'scanning' + W,
                             G + str(len(targets)) + W, '' if len(targets) == 1 else 's',
                             G + str(len(clients)) + W, '' if len(clients) == 1 else 's',
@@ -1400,7 +1425,7 @@ class RunEngine:
                     stdout.flush()
                     old_targets = targets[:] 
                     println_debug('Checking if timeout...')
-                    if self.is_timeout(time_started):
+                    if self.is_timeout(time_started, targets, clients, True):
                         break
 
             except KeyboardInterrupt:
@@ -1430,12 +1455,7 @@ class RunEngine:
         else:
             println_info("opening AP file " +self.RUN_CONFIG.SCAN_FILE_LOAD)
             (targets, clients) = self.parse_csv(self.RUN_CONFIG.SCAN_FILE_LOAD)
-            for t in targets:
-                if t.ssid == '':
-                    for d in self.RUN_CONFIG.DECLOAKED_TARGETS:
-                        if t.bssid == d.bssid:
-                            t.ssid=d.ssid
-                            break
+            targets=self.add_known_ssid(targets)
         # if stop_scanning:
         #     return (targets, clients)
 
@@ -1457,24 +1477,97 @@ class RunEngine:
             targets=self.filter_targets(targets,clients,self.RUN_CONFIG.SHOW_TARGET)
         self.print_targets(targets, clients, self.RUN_CONFIG.SCAN_MAX_ROW_SHOW, self.RUN_CONFIG.COLUMN,self.RUN_CONFIG.SPACING)
         if(self.RUN_CONFIG.ATTACK_TARGET == ""):
-            ri = raw_input(
-            GR + "\n [+]" + W + " enter " + G + "target numbers" + W + " (" + G + "1-%s)" % (str(len(targets))) + \
-            " separated by commas, range (e.g.'" + G + "1-2" + W + "'), or wildcards '%s', " % (G + 'c[num/range]' + W + ' for channel, ' + G + 'p[>=,>,=,<,<=][num]' + W + ' for power, ' + G + 'wep' + W + ', ' + G + 'wep[num of client]' + W + ' or ' + G + 'wep+' + W + " with client), " + G + 'wpa' + W + ' (same syntax as wep), ' + G + 'wps[0,1]' + W + '(0=no, 1=yes)' + ' or ' + G + 'all' + W) + \
+            ri = raw_input((GR + "\n [+]" + W + " enter " + G + "target numbers" + W + " (" + G + "1-%s" + W + ")") % (str(len(targets))) + \
+            (" separated by commas, range (e.g.'" + G + "1-2" + W + "'), or wildcards: %s, ") % (G + 'c[num/range]' + W + ' for channel, ' + G + 'p[>=,>,=,<,<=][num]' + W + ' for power, ' + G + 'wep' + W + ', ' + G + 'wep[num of client]' + W + ' or ' + G + 'wep+' + W + " with client, " + G + 'wpa' + W + ' (same syntax as wep), ' + G + 'wps[0,1]' + W + '(0=no, 1=yes), ' + G + 'e[SSID]' +W +', ' + G + 'b[BSSID]' + W + ' or ' + G + 'all' + W) + \
             "blank input = " + G + "all" + W + ", add " + G + '-' + W + " before to remove:" )
         else:
             ri=self.RUN_CONFIG.ATTACK_TARGET
         victims=self.filter_targets(targets, clients, ri)
 
         if len(victims) == 0:
-            print O + '\n [!] ' + R + 'no targets selected.\n' + W
+            println_warning('no targets selected.' + W)
             self.RUN_CONFIG.exit_gracefully(0)
 
         print ''
-        print ' [+] %s%d%s target%s selected.' % (G, len(victims), W, '' if len(victims) == 1 else 's')
+        println_info('%s%d%s target%s selected.' % (G, len(victims), W, '' if len(victims) == 1 else 's'))
 
         return (victims, clients)
-    def is_timeout(self, time_started):
-        return self.RUN_CONFIG.SCAN_TIMEOUT != 0 and self.RUN_CONFIG.SCAN_TIMEOUT < time.time()-time_started
+    def deauth(self,target, clients, time_started, iface, wait = False):
+        cmd = ['aireplay-ng',
+               '--ignore-negative-one',
+               '--deauth', str(self.RUN_CONFIG.WPA_DEAUTH_COUNT),
+               '-a', target.bssid]
+        associated_clients=target.find_clients(clients)
+        messages=[]
+        if len(associated_clients):
+            bssid=associated_clients[random.randint(0, len(associated_clients)-1)].bssid
+            cmd.append('-c')
+            cmd.append(bssid)
+            messages.append(G + ' [!] ' + W + "%s deauthing hidden access point (%s) with client (%s)" % \
+            (GR + sec_to_hms(time.time() - time_started) + W, G + target.bssid + W, G + bssid + W  ))
+            #print G + ' [!] ' + W + "%s deauthing hidden access point (%s) with client (%s)" % \
+            #(GR + sec_to_hms(time.time() - time_started) + W, G + t.bssid) + W, G + bssid + W  
+        else:
+            messages.append(G + ' [!] ' + W + "%s deauthing hidden access point (%s) with no client" % \
+            (GR + sec_to_hms(time.time() - time_started) + W, G + target.bssid + W))
+            #print G + ' [!] ' + W + "%s deauthing hidden access point (%s) with no client" % \
+            #(GR + sec_to_hms(time.time() - time_started) + W, G + t.bssid + W)
+        cmd.append(iface)
+
+        proc_aireplay=Popen(cmd, stdout=DN, stderr=DN)
+        if wait:
+            proc_aireplay.wait()
+        return messages                           
+    def add_known_ssid(self,targets):
+        for i,t in enumerate(targets):
+                if targets[i].ssid == '':
+                    for d in self.RUN_CONFIG.DECLOAKED_TARGETS:
+                        if targets[i].bssid == d.bssid:
+                            targets[i].ssid=d.ssid
+                            break
+        return targets
+    def is_timeout(self, time_started, targets, clients, quiet = True):
+        timeouts=self.RUN_CONFIG.SCAN_TIMEOUT
+        if timeouts == "":
+            return False
+        
+        if isinstance(timeouts,int):
+            timeout=int(timeouts)
+            if timeout != 0 and timeout < time.time()-time_started:
+                return True
+        else:
+            
+            for timeout in timeouts.split(","):
+                timeout=timeout.strip()
+                if timeout.isdigit():
+                    timeout=int(timeout)
+                    if timeout != 0 and timeout < time.time()-time_started:
+                        return True
+                elif re.match('^n(<|>|=|>=|<=)(\d+)$',timeout):   #target
+                    matches=re.match('^n(<|>|=|>=|<=)(\d+)$',timeout)
+                    result=matches.groups()
+                    num_of_targets=len(targets)
+                    return eval(str(num_of_targets) + result[0] + result[1])
+                #elif re.match('^t(<|>|=|>=|<=)(\d+)$',timeout):   #time
+                elif re.match('^b(.+)$',timeout): #BSSID
+                    matches=re.match('^b(.+)$',timeout)
+                    result=matches.groups()
+                    bssid=result[0].upper()
+                    for target in targets:
+                        if target.bssid.find(bssid) != -1:
+                            return True
+                elif re.match('^e(.*)$',timeout): #ESSID
+                    matches=re.match('^e(.*)$',timeout)
+                    result=matches.groups()
+                    ssid=result[0]
+                    for target in targets:
+                        if ssid == target.ssid or ssid != "" and target.ssid.find(ssid) != -1:
+                            return True
+                else:
+                    if not quiet:
+                        println_error("Unknown timeout criteria: %s",timeout)
+        return False
+        #return self.RUN_CONFIG.SCAN_TIMEOUT != 0 and self.RUN_CONFIG.SCAN_TIMEOUT < time.time()-time_started
 
     def print_target(self, target, clients, i, spacing):
         separator=' '
@@ -1531,7 +1624,7 @@ class RunEngine:
         print_text+=separator*spacing
 
         # Clients
-        count = self.count_clients(target,clients)
+        count = target.count_clients(clients)
         if count > 0:
             print_text+="%s" % (G + str(count).rjust(6) + W)
         else:
@@ -1584,15 +1677,6 @@ class RunEngine:
             #    print ' ',
             print ''
             i+=1
-    def find_clients(self, target, clients):
-        associated_clients=[]
-        for client in clients:
-            if client.station == target.bssid:
-                associated_clients.append(client)
-        return associated_clients
-    def count_clients(self, target, clients):
-        return len(self.find_clients(target, clients))
-        
     def filter_targets(self, targets, clients, inputs):
         remove = False
         victims=[]
@@ -1615,7 +1699,7 @@ class RunEngine:
                 result=matches.groups()
                 for target in targets:
                     if target.encryption.lower().find(result[0]) != -1:
-                        num_of_clients=self.count_clients(target, clients)
+                        num_of_clients=target.count_clients(clients)
                         
                         if result[1]==None or result[1] == '+' and num_of_clients > 0 or result[1].isdigit() and num_of_clients == int(result[1]):
                             if remove:
@@ -1648,16 +1732,17 @@ class RunEngine:
                                     victims.index(target)
                                 except ValueError:
                                     victims.append(target)
-            elif re.match('^e(.+)$',r):
-                matches=re.match('^e(.+)$',r)
+            elif re.match('^e(.*)$',r):
+                matches=re.match('^e(.*)$',r)
                 result=matches.groups()
+                ssid=result[0]
                 if remove:
                     for victim in victims:
-                        if victim.ssid.find(result[0]) != -1:
+                        if ssid == target.ssid or ssid != "" and victim.ssid.find(ssid) != -1:
                             victims.remove(victim) 
                 else:
                     for target in targets:
-                        if target.ssid.find(result[0]) != -1:
+                        if ssid == target.ssid or ssid != "" and target.ssid.find(ssid) != -1:
                                     try:
                                         victims.index(target)
                                     except ValueError:
@@ -1697,7 +1782,7 @@ class RunEngine:
                     cx = int(result[0])
                     cy = int(result[2])
                     if cx > cy:
-                            print O + " [!]" + R + " Invalid input: %s " % (O + input + W)
+                            println_warning("Invalid input: %s " % (O + r + W))
                     else:
                         if remove:
                             for victim in victims:
@@ -1759,19 +1844,20 @@ class RunEngine:
                             victims.append(int(r)-1)
                         
                 else:
-                        print O + " [!]" + R + " Invalid input: %s " % (O + input + W)
+                        println_warning("invalid input: %s " % (O + input + W))
             else:
-                print O + " [!]" + R + " Invalid input: %s " % (O + input + W)
+                println_warning("invalid input: %s " % (O + input + W))
 
         return victims
     def Start(self):
-        self.RUN_CONFIG.CreateTempFolder()
-        self.RUN_CONFIG.handle_args()
-        self.RUN_CONFIG.ConfirmRunningAsRoot()
+        
         self.RUN_CONFIG.ConfirmCorrectPlatform()
+        self.RUN_CONFIG.ConfirmRunningAsRoot()
+        self.RUN_CONFIG.handle_args()
+        self.RUN_CONFIG.CreateTempFolder()
 
-        self.initial_check()  # Ensure required programs are installed.
-
+        if not self.programs_check():  # Ensure required programs are installed.
+            self.RUN_CONFIG.exit_gracefully(1)
         # Use an interface already in monitor mode if it has been provided,
         if self.RUN_CONFIG.MONITOR_IFACE != '':
             iface = self.RUN_CONFIG.MONITOR_IFACE
@@ -1779,6 +1865,7 @@ class RunEngine:
             # The "get_iface" method anonymizes the MAC address (if needed)
             # and puts the interface into monitor mode.
             iface = self.get_iface()
+        
         self.RUN_CONFIG.THIS_MAC = get_mac_address(iface)  # Store current MAC address
 
         (targets, clients) = self.scan(iface=iface, channel=self.RUN_CONFIG.TARGET_CHANNEL)
@@ -1791,8 +1878,7 @@ class RunEngine:
                 for already in RUN_CONFIG.CRACKED_TARGETS:
                     if already.bssid == targets[index].bssid:
                         if RUN_CONFIG.SHOW_ALREADY_CRACKED == True:
-                            print R + '\n [!]' + O + ' you have already cracked this access point\'s key!' + W
-                            print R + ' [!] %s' % (C + already.ssid + W + ': "' + G + already.key + W + '"')
+                            println_info('you have already cracked %s (%s), key is "%s" !' % (C + already.ssid + W , G + already.bssid + W, G + already.key + W))
                             ri = raw_input(
                                 GR + ' [+] ' + W + 'do you want to crack this access point again? (' + G + 'y/' + O + 'n' + W + '): ')
                             if ri.lower() == 'n':
@@ -1870,9 +1956,9 @@ class RunEngine:
                 if wep_attack.RunAttack():
                     wep_success += 1
             elif t.encryption.find("OPN") != -1:
-                print R + 'OPN network is not encrypted !', W
+                println_info('OPN network is not encrypted!')
             else:
-                print R + ' unknown encryption:', t.encryption, W
+                println_error('unknown encryption: ' + t.encryption)
 
             # If user wants to stop attacking
             if self.RUN_CONFIG.TARGETS_REMAINING <= 0: break
@@ -1880,8 +1966,7 @@ class RunEngine:
         if wpa_total + wep_total > 0:
             # Attacks are done! Show results to user
             print ''
-            print GR + ' [+] %s%d attack%s completed:%s' % (
-            G, wpa_total + wep_total, '' if wpa_total + wep_total == 1 else 's', W)
+            println_info('%s%d attack%s completed:%s' % (G, wpa_total + wep_total, '' if wpa_total + wep_total == 1 else 's', W))
             print ''
             if wpa_total > 0:
                 if wpa_success == 0:
@@ -2000,11 +2085,11 @@ class RunEngine:
 
         if self.RUN_CONFIG.TARGET_ESSID == '' and self.RUN_CONFIG.TARGET_BSSID == '':
             println_error('target ssid and bssid are required to check for handshakes')
-            println_error('please enter essid (access point name) using -e <name>')
-            println_error('and/or target bssid (mac address) using -b <mac>\n')
+            println_error('please enter essid (access point name) using --e <name>')
+            println_error('and/or target bssid (mac address) using --b <mac>\n')
             # exit_gracefully(1)
 
-        if self.UN_CONFIG.TARGET_BSSID == '':
+        if self.RUN_CONFIG.TARGET_BSSID == '':
             # Get the first BSSID found in tshark!
             self.RUN_CONFIG.TARGET_BSSID = get_bssid_from_cap(self.RUN_CONFIG.TARGET_ESSID, capfile)
             # if TARGET_BSSID.find('->') != -1: TARGET_BSSID == ''
@@ -2016,7 +2101,7 @@ class RunEngine:
         if self.RUN_CONFIG.TARGET_BSSID != '' and self.RUN_CONFIG.TARGET_ESSID == '':
             self.RUN_CONFIG.TARGET_ESSID = get_essid_from_cap(self.RUN_CONFIG.TARGET_BSSID, capfile)
 
-        print GR + '\n [+]' + W + ' checking for handshakes in %s' % (G + capfile + W)
+        println_info(' checking for handshakes in %s' % (G + capfile + W))
 
         t = Target(self.RUN_CONFIG.TARGET_BSSID, '', '', '', 'WPA', self.RUN_CONFIG.TARGET_ESSID)
 
@@ -2060,27 +2145,47 @@ class RunEngine:
 ##############################################################
 
 ### End Classes
-def println_debug(message, time_passed = -1):
-    None
-    #print G + ' [#] ' + W + message + W
+ 
+def println_debug(message, time_started = -1):
+    global RUN_CONFIG
+    if RUN_CONFIG.DEBUG:
+        print G + ' [#] ' + W + message + W
 
-def print_info(message, time_passed = -1):
-    print GR + ' [+] ' + W + message + W,
+def print_info(message, time_started = -1):
+    time_text=''
+    if time_started > -1:
+        time_text=sec_to_hms(time.time() - time_started) 
+    print GR + ' [+] ' + W + time_text + message + W,
 
-def println_info(message, time_passed = -1):
-    print GR + ' [+] ' + W + message + W
+def println_info(message, time_started = -1):
+    time_text=''
+    if time_started > -1:
+        time_text=sec_to_hms(time.time() - time_started) 
+    print GR + ' [+] ' + W + time_text + message + W
 
-def print_error(message, time_passed = -1):
-    print R + ' [!] ' + O + message + W,
+def print_error(message, time_started = -1):
+    time_text=''
+    if time_started > -1:
+        time_text=sec_to_hms(time.time() - time_started) 
+    print R + ' [!] ' + O + time_text + message + W,
 
-def println_error(message, time_passed = -1):
-    print R + ' [!] ' + O + message + W
+def println_error(message, time_started = -1):
+    time_text=''
+    if time_started > -1:
+        time_text=sec_to_hms(time.time() - time_started) 
+    print R + ' [!] ' + O + time_text + message + W
 
-def print_warning(message, time_passed = -1):
-    print O + ' [!] ' + R + message + W,
+def print_warning(message, time_started = -1):
+    time_text=''
+    if time_started > -1:
+        time_text=sec_to_hms(time.time() - time_started) 
+    print O + ' [!] ' + R + time_text + message + W,
 
-def println_warning(message, time_passed = -1):
-    print O + ' [!] ' + R + message + W
+def println_warning(message, time_started = -1):
+    time_text=''
+    if time_started > -1:
+        time_text=sec_to_hms(time.time() - time_started) 
+    print O + ' [!] ' + R + time_text + message + W
 def rename(old, new):
     """
         Renames file 'old' to 'new', works with separate partitions.
@@ -2282,7 +2387,7 @@ def print_and_exec(cmd):
     """
     print '\r                                                        \r',
     stdout.flush()
-    print O + ' [!] ' + W + 'executing: ' + O + ' '.join(cmd) + W,
+    print_info('executing: ' + O + ' '.join(cmd) + W)
     stdout.flush()
     call(cmd, stdout=DN, stderr=DN)
     time.sleep(0.1)
@@ -2715,7 +2820,7 @@ class WPAAttack(Attack):
                     print '\n %s %shandshake captured%s! saved as "%s"' % (
                     GR + sec_to_hms(seconds_running) + W, G, W, G + save_as +W)
                     self.RUN_CONFIG.WPA_FINDINGS.append(
-                        '%s (%s) handshake captured' % (self.target.ssid, self.target.bssid))
+                        '"%s" (%s) handshake captured' % (self.target.ssid, self.target.bssid))
                     self.RUN_CONFIG.WPA_FINDINGS.append('saved as %s' % (save_as))
                     self.RUN_CONFIG.WPA_FINDINGS.append('')
 
@@ -2980,7 +3085,7 @@ class WPAAttack(Attack):
             rename(capfile + '.temp', output_file)
 
         else:
-            print R + " [!]" + O + " unable to strip .cap file: neither pyrit nor tshark were found" + W
+            println_error("unable to strip .cap file: neither pyrit nor tshark were found" + W)
 
 
 ##########################
@@ -3136,7 +3241,7 @@ class WEPAttack(Attack):
         remaining_attacks = total_attacks
 
         print ' %s preparing attack "%s" (%s)' % \
-              (GR + sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT) + W, G + self.target.ssid + W, G + self.target.bssid)
+              (GR + sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT) + W, G + self.target.ssid + W, G + self.target.bssid + W)
 
         remove_airodump_files(self.RUN_CONFIG.temp + 'wep')
         remove_file(self.RUN_CONFIG.temp + 'wepkey.txt')
@@ -3186,8 +3291,8 @@ class WEPAttack(Attack):
                     send_interrupt(proc_aireplay)
                 proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
 
-                print '\r %s attacking "%s" via %s attack' % (
-                GR + sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT) + W, G + self.target.ssid + W, G + attacks_name[attack_num] + W)
+                print '\r %s attacking "%s" (%s) via %s attack' % (
+                GR + sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT) + W, G + self.target.ssid + W,G + self.target.bssid + W, G + attacks_name[attack_num] + W)
                 # 
 
 
@@ -3254,10 +3359,10 @@ class WEPAttack(Attack):
                         infile = open(self.RUN_CONFIG.temp + 'wepkey.txt', 'r')
                         key = infile.read().replace('\n', '')
                         infile.close()
-                        print '\n\n %s %s %s (%s)! key: "%s"' % (
+                        print '\n\n %s %s "%s" (%s)! key: "%s"' % (
                         current_hms, G + 'cracked', self.target.ssid + W, G + self.target.bssid + W, C + key + W)
                         self.RUN_CONFIG.WEP_FINDINGS.append(
-                            'cracked %s (%s), key: "%s"' % (self.target.ssid, self.target.bssid, key))
+                            'cracked "%s" (%s), key: "%s"' % (self.target.ssid, self.target.bssid, key))
                         self.RUN_CONFIG.WEP_FINDINGS.append('')
 
                         t = Target(self.target.bssid, 0, 0, 0, 'WEP', self.target.ssid)
@@ -3668,8 +3773,8 @@ class WPSAttack(Attack):
             Once PIN is found, PSK can be recovered.
             PSK is displayed to user and added to WPS_FINDINGS
         """
-        print GR + ' [0:00:00]' + W + ' initializing %sWPS PIN attack%s on %s' % \
-                                      (G, W, G + self.target.ssid + W + ' (' + G + self.target.bssid + W + ')' + W)
+        print GR + ' [0:00:00]' + W + ' initializing %sWPS PIN attack%s on "%s" (%s)' % \
+                                      (G, W, G + self.target.ssid + W, G + self.target.bssid + W)
 
         cmd = ['reaver',
                '-i', self.iface,
@@ -3754,7 +3859,7 @@ class WPSAttack(Attack):
 
                 print ' %s WPS attack, %s success/ttl,' % \
                       (GR + sec_to_hms(time.time() - time_started) + W, \
-                       G + str(tries) + W + '/' + O + str(tries_total)),
+                       G + str(tries) + W + '/' + O + str(tries_total) + W),
 
                 if percent == 'x.xx%' and aps == 'x':
                     print '\r',
@@ -3764,21 +3869,21 @@ class WPSAttack(Attack):
                 if self.RUN_CONFIG.WPS_TIMEOUT > 0 and (time.time() - last_success) > self.RUN_CONFIG.WPS_TIMEOUT:
                     print R + '\n [!]' + O + ' unable to complete successful try in %d seconds' % (
                     self.RUN_CONFIG.WPS_TIMEOUT)
-                    print R + ' [+]' + W + ' skipping %s' % (O + self.target.ssid + W)
+                    print R + ' [+]' + W + ' skipping "%s" (%s)' % (O + self.target.ssid + W, O + self.target.bssid + W)
                     break
 
                 if self.RUN_CONFIG.WPS_MAX_RETRIES > 0 and retries > self.RUN_CONFIG.WPS_MAX_RETRIES:
                     print R + '\n [!]' + O + ' unable to complete successful try in %d retries' % (
                     self.RUN_CONFIG.WPS_MAX_RETRIES)
                     print R + ' [+]' + O + ' the access point may have WPS-locking enabled, or is too far away' + W
-                    print R + ' [+]' + W + ' skipping %s' % (O + self.target.ssid + W)
+                    print R + ' [+]' + W + ' skipping "%s" (%s)' % (O + self.target.ssid + W, O + self.target.bssid + W)
                     break
 
                 if self.RUN_CONFIG.WPS_RATIO_THRESHOLD > 0.0 and tries > 0 and (
                     float(tries) / tries_total) < self.RUN_CONFIG.WPS_RATIO_THRESHOLD:
                     print R + '\n [!]' + O + ' successful/total attempts ratio was too low (< %.2f)' % (
                     self.RUN_CONFIG.WPS_RATIO_THRESHOLD)
-                    print R + ' [+]' + W + ' skipping %s' % (G + self.target.ssid + W)
+                    print R + ' [+]' + W + ' skipping "%s" (%s)' % (G + self.target.ssid + W, G + self.target.bssid + W)
                     break
 
                 stdout.flush()
@@ -3789,10 +3894,10 @@ class WPSAttack(Attack):
             # End of big "while not cracked" loop
 
             if cracked:
-                if pin != '': print GR + '\n\n [+]' + G + ' PIN found:     %s' % (C + pin + W)
-                if key != '': print GR + ' [+] %sWPA key found:%s %s' % (G, W, C + key + W)
-                self.RUN_CONFIG.WPA_FINDINGS.append(W + "found %s's WPA key: \"%s\", WPS PIN: %s" % (
-                G + self.target.ssid + W, C + key + W, C + pin + W))
+                if pin != '': println_info(G + ' PIN found:     %s' % (C + pin + W))
+                if key != '': println_info('%sWPA key found:%s %s' % (G, W, C + key + W))
+                self.RUN_CONFIG.WPA_FINDINGS.append(W + "found %s (%s)'s WPA key: \"%s\", WPS PIN: %s" % (
+                G + self.target.ssid + W, G + self.target.bssid + W, C + key + W, C + pin + W))
                 self.RUN_CONFIG.WPA_FINDINGS.append('')
 
                 t = Target(self.target.bssid, 0, 0, 0, 'WPA', self.target.ssid)
