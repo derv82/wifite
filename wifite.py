@@ -178,7 +178,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 88;
+        self.REVISION = 89;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -744,7 +744,7 @@ class RunConfiguration:
         target_group.add_argument('-l','--load', metavar='[file]', help='Load airodump file instead of scanning.', action='store', dest='load')
         target_group.add_argument('-v','--save', metavar='[file]', help='Save airodump file.', action='store', dest='save')
         target_group.add_argument('-s','--show', metavar='[filters]', help='Filter targets in scanning state.' + 'Syntax: numbers, range (e.g. "1-4"), power level (e.g. "p[>,>=,=,<=,<][POWER]"), channel (e.g. "c[CHANNEL,range])", wps disabled or enabled (e.g. "wps0", "wps1"), Cipher (e.g. "wep" or "wpa", "wep[NUM OF CLIENT]" or "wpa[NUM OF CLIENT]", "wep+" or "wpa+" for network with clients), ESSID (e.g. "e[ESSID]") or BSSID (e.g. "b[11:22:33]"). Multiple filters separated by comma supported. Add "-" or "=" before to remove targets.', action='store', dest='show')
-        target_group.add_argument('-t','--timeout', metavar='[criteria]', help='Criteria to stop scanning state. Numbers = seconds, e[ESSID] or b[BSSID]= timeout when target is found, n[>,>=,=,<=,<][num of targets] = timeout when total targets more/equal/less than certain numbers. Multiple criteria separated by comma supported.', action='store', dest='timeout')
+        target_group.add_argument('-t','--timeout', metavar='[criteria]', help='Criteria to stop scanning state. Numbers = seconds, e[ESSID][+] or b[BSSID][+]= timeout when target is found, add "+" at the end means "with clients", n[>,>=,=,<=,<][num of targets] = timeout when total targets more/equal/less than certain numbers. Multiple criteria separated by comma supported.', action='store', dest='timeout')
         target_group.add_argument('-c','--channel', metavar='[N]', type=int, help='Filter targets with specific channel in scanning state (equivalent to "--show c[N]").', action='store', dest='channel')
         target_group.add_argument('--power', metavar='[N]',type=int, help='Filter targets with signal strength > [N] in scanning state (equivalent to "--show p\>[N]").', action='store',
                                   dest='power')
@@ -1403,7 +1403,7 @@ class RunEngine:
                             wps_check_targets(targets, self.RUN_CONFIG.temp + 'wifite-01.cap', False) #self.RUN_CONFIG.VERBOSE_APS)
                     
                     println_debug('Checking if should print...')
-                    if force_print  or time.time() - last_print_time > 5 :
+                    if force_print  or len(old_targets) != len(targets) or time.time() - last_print_time > 5 :
                         os.system('clear')    
                         targets = sorted(targets, key=lambda t: t.power, reverse=True)
                         self.print_targets(targets, clients, self.RUN_CONFIG.SCAN_MAX_ROW_SHOW, self.RUN_CONFIG.COLUMN,self.RUN_CONFIG.SPACING)
@@ -1478,7 +1478,7 @@ class RunEngine:
         self.print_targets(targets, clients, self.RUN_CONFIG.SCAN_MAX_ROW_SHOW, self.RUN_CONFIG.COLUMN,self.RUN_CONFIG.SPACING)
         if(self.RUN_CONFIG.ATTACK_TARGET == ""):
             ri = raw_input((GR + "\n [+]" + W + " enter " + G + "target numbers" + W + " (" + G + "1-%s" + W + ")") % (str(len(targets))) + \
-            (" separated by commas, range (e.g.'" + G + "1-2" + W + "'), or wildcards: %s, ") % (G + 'c[num/range]' + W + ' for channel, ' + G + 'p[>=,>,=,<,<=][num]' + W + ' for power, ' + G + 'wep' + W + ', ' + G + 'wep[num of client]' + W + ' or ' + G + 'wep+' + W + " with client, " + G + 'wpa' + W + ' (same syntax as wep), ' + G + 'wps[0,1]' + W + '(0=no, 1=yes), ' + G + 'e[SSID]' +W +', ' + G + 'b[BSSID]' + W + ' or ' + G + 'all' + W) + \
+            (" separated by commas, range (e.g.'" + G + "1-2" + W + "'), or wildcards: %s, ") % (G + 'c[num/range]' + W + ' for channel, ' + G + 'p[>=,>,=,<,<=][num]' + W + ' for power, ' + G + 'wep' + W + ', ' + G + 'wep[num of client]' + W + ' or ' + G + 'wep+' + W + " with client, " + G + 'wpa' + W + ' (same syntax as wep), ' + G + 'wps[0,1]' + W + '(0=no, 1=yes), ' + G + 'e[SSID][+]' +W +', ' + G + 'b[BSSID][+]' + W + ' or ' + G + 'all' + W) + \
             "blank input = " + G + "all" + W + ", add " + G + '-' + W + " before to remove:" )
         else:
             ri=self.RUN_CONFIG.ATTACK_TARGET
@@ -1528,6 +1528,7 @@ class RunEngine:
         return targets
     def is_timeout(self, time_started, targets, clients, quiet = True):
         timeouts=self.RUN_CONFIG.SCAN_TIMEOUT
+        
         if timeouts == "":
             return False
         
@@ -1536,7 +1537,7 @@ class RunEngine:
             if timeout != 0 and timeout < time.time()-time_started:
                 return True
         else:
-            
+    
             for timeout in timeouts.split(","):
                 timeout=timeout.strip()
                 if timeout.isdigit():
@@ -1549,20 +1550,24 @@ class RunEngine:
                     num_of_targets=len(targets)
                     return eval(str(num_of_targets) + result[0] + result[1])
                 #elif re.match('^t(<|>|=|>=|<=)(\d+)$',timeout):   #time
-                elif re.match('^b(.+)$',timeout): #BSSID
-                    matches=re.match('^b(.+)$',timeout)
+                elif re.match('^b([a-zA-z:0-9]+)(\+)?$',timeout): #BSSID
+                    matches=re.match('^b([a-zA-z:0-9]+)(\+)?$',timeout)
                     result=matches.groups()
                     bssid=result[0].upper()
                     for target in targets:
                         if target.bssid.find(bssid) != -1:
-                            return True
-                elif re.match('^e(.*)$',timeout): #ESSID
-                    matches=re.match('^e(.*)$',timeout)
+                            if result[1] == None or (result[1]=="+" and target.count_clients(clients) > 0):
+                                return True
+                elif re.match('^e(.*)(\+)?$',timeout) or re.match('^e(.*)(\+)$',timeout): #ESSID
+                    matches=re.match('^e(.*)(\+)?$',timeout)
+                    if re.match('^e(.*)(\+)$',timeout): matches=re.match('^e(.*)(\+)$',timeout)
                     result=matches.groups()
                     ssid=result[0]
+
                     for target in targets:
-                        if ssid == target.ssid or ssid != "" and target.ssid.find(ssid) != -1:
-                            return True
+                        if ssid == target.ssid or (ssid != "" and target.ssid.find(ssid) != -1):
+                            if result[1] == None or (result[1]=="+" and target.count_clients(clients) > 0):
+                                return True
                 else:
                     if not quiet:
                         println_error("Unknown timeout criteria: %s",timeout)
@@ -1732,32 +1737,39 @@ class RunEngine:
                                     victims.index(target)
                                 except ValueError:
                                     victims.append(target)
-            elif re.match('^e(.*)$',r):
-                matches=re.match('^e(.*)$',r)
+            elif re.match('^e(.*)(\+)?$',timeout) or re.match('^e(.*)(\+)$',timeout): #ESSID
+                matches=re.match('^e(.*)(\+)?$',r)
+                if re.match('^e(.*)(\+)$',timeout): matches=re.match('^e(.*)(\+)$',timeout)
                 result=matches.groups()
                 ssid=result[0]
                 if remove:
                     for victim in victims:
-                        if ssid == target.ssid or ssid != "" and victim.ssid.find(ssid) != -1:
-                            victims.remove(victim) 
+                        if ssid == victim.ssid or (ssid != "" and victim.ssid.find(ssid) != -1):
+                            if result[1] == None or (result[1] == "+" and victim.count_clients(clients) > 0):
+                                victims.remove(victim) 
+                            
                 else:
                     for target in targets:
-                        if ssid == target.ssid or ssid != "" and target.ssid.find(ssid) != -1:
-                                    try:
-                                        victims.index(target)
-                                    except ValueError:
-                                        victims.append(target)
-            elif re.match('^b(.+)$',r):
-                matches=re.match('^b(.+)$',r)
+                        if ssid == target.ssid or (ssid != "" and target.ssid.find(ssid) != -1):
+                            if result[1] == None or (result[1] == "+" and target.count_clients(clients) > 0):
+                                try:
+                                    victims.index(target)
+                                except ValueError:
+                                    victims.append(target)
+            elif re.match('^b([a-zA-z:0-9]+)(\+)?$',r):
+                matches=re.match('^b([a-zA-z:0-9]+)(\+)?$',r)
                 result=matches.groups()
+                result[0]=result[0].upper()
                 #print result[0]
                 if remove:
                     for victim in victims:
-                        if victim.bssid.lower().find(result[0]) != -1:
-                            victims.remove(victim) 
+                        if victim.bssid.find(result[0]) != -1:
+                            if result[1] == None or (result[1] == "+" and victim.count_clients(clients) > 0):
+                                victims.remove(victim) 
                 else:
                     for target in targets:
-                        if target.bssid.lower().find(result[0]) != -1:
+                        if target.bssid.find(result[0]) != -1:
+                                if result[1] == None or (result[1] == "+" and target.count_clients(clients) > 0):
                                     try:
                                         victims.index(target)
                                     except ValueError:
@@ -1765,7 +1777,7 @@ class RunEngine:
             elif re.match('^c([1-9]|1[012])(\-([1-9]|1[012]))?$',r):
                 matches=re.match('^c([1-9]|1[012])(\-([1-9]|1[012]))?$',r)
                 result=matches.groups()
-                if result[1]=="":
+                if result[1] == None:
                     cx = int(result[0])
                     if remove:
                         for victim in victims:
@@ -2739,8 +2751,8 @@ class WPAAttack(Attack):
             # Setting deauthentication process here to avoid errors later on
             proc_deauth = None
 
-            print ' %s starting %swpa handshake capture%s on "%s" (%s)' % \
-                  (GR + sec_to_hms(self.RUN_CONFIG.WPA_ATTACK_TIMEOUT) + W, G, W, G + self.target.ssid + W, G + self.target.bssid +W)
+            print ' %s starting %sWPA handshake capture%s on "%s" (%s) with signal strength %s%ddB%s' % \
+                  (GR + sec_to_hms(self.RUN_CONFIG.WPA_ATTACK_TIMEOUT) + W, G, W, G + self.target.ssid + W, G + self.target.bssid +W, G, self.target.power, W)
             got_handshake = False
 
             seconds_running = 0
@@ -3240,8 +3252,8 @@ class WEPAttack(Attack):
             return False
         remaining_attacks = total_attacks
 
-        print ' %s preparing attack "%s" (%s)' % \
-              (GR + sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT) + W, G + self.target.ssid + W, G + self.target.bssid + W)
+        print ' %s starting %s attack on "%s" (%s) with signal strength %s%ddB%s' % \
+              (GR + sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT) + W, G + self.target.encryption + W, G + self.target.ssid + W, G + self.target.bssid + W, G, self.target.power,W)
 
         remove_airodump_files(self.RUN_CONFIG.temp + 'wep')
         remove_file(self.RUN_CONFIG.temp + 'wepkey.txt')
@@ -3520,7 +3532,7 @@ class WEPAttack(Attack):
                     # Exit or skip target (either way, stop this attack)
                     if self.RUN_CONFIG.WEP_SAVE and total_ivs + ivs > 0:
                         # Save packets
-                        self.save_wep_packet(self.target)
+                        self.save_wep_packet(self.target, total_ivs + ivs)
                     println_debug("Exit or skip target (either way, stop this attack)")
                     println_debug("Remove files generated by airodump/aireplay/packetforce")
                     # Remove files generated by airodump/aireplay/packetforce
@@ -3564,7 +3576,7 @@ class WEPAttack(Attack):
         
         if self.RUN_CONFIG.WEP_SAVE and total_ivs + ivs > 0:
             # Save packets
-            self.save_wep_packet(self.target)
+            self.save_wep_packet(self.target, total_ivs+ivs)
 
         send_interrupt(proc_airodump)
         if proc_aireplay != None:
@@ -3576,7 +3588,7 @@ class WEPAttack(Attack):
                 remove_file(filename)
         remove_airodump_files(self.RUN_CONFIG.temp + 'wep')
         remove_file(self.RUN_CONFIG.temp + 'wepkey.txt')
-    def save_wep_packet(self,target):
+    def save_wep_packet(self,target, ivs):
         try:
             path=self.RUN_CONFIG.WEP_IVS_DIR + os.sep
             os.mkdir(path)
@@ -3590,7 +3602,8 @@ class WEPAttack(Attack):
             i+=1
         try:
             rename(self.RUN_CONFIG.temp + 'wep-01.cap', save_as)
-            println_info('packet capture ' + G + 'saved' + W + ' to ' + G + save_as)
+            println_info(('%s%d%s IVs packet captured are saved to ' + G + save_as) % (G,ivs,W))
+            
         except OSError:
             println_error('unable to save capture file!')
         #else:
@@ -3773,8 +3786,8 @@ class WPSAttack(Attack):
             Once PIN is found, PSK can be recovered.
             PSK is displayed to user and added to WPS_FINDINGS
         """
-        print GR + ' [0:00:00]' + W + ' initializing %sWPS PIN attack%s on "%s" (%s)' % \
-                                      (G, W, G + self.target.ssid + W, G + self.target.bssid + W)
+        print GR + ' [0:00:00]' + W + ' starting %sWPS PIN attack%s on "%s" (%s) with signal strength %s%ddB%s' % \
+                                      (G, W, G + self.target.ssid + W, G + self.target.bssid + W, G, self.target.power, W)
 
         cmd = ['reaver',
                '-i', self.iface,

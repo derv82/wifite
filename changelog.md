@@ -1,6 +1,11 @@
+# Version 2.0 Rev 89 #
+- Minor message tweak
+- I accidentally covert the last two releases to evil CRLF line ending, now move back to LF line ending.
+- Modified --timeout/--attack/--scan switch: now "bBSSID+" means AP contains BSSID with associated client, same meaning for "eSSID+".
+
 # Version 2.0 Rev 88 #
 - Tidy up message printing 
-- Modified "--timeout" switch for better flexibility in scanning state (e.g. "--timeout bBSSID,n\>30,600 means" to timeout if target contains BSSID is found or total targets exceed 30, or after 10 minutes.)
+- Modified "--timeout" switch for better flexibility in scanning state (e.g. "--timeout bBSSID,n\>30,600" means to timeout if target contains BSSID is found or total targets exceed 30, or after 10 minutes.)
 - Prompt to install missing programs.
 - Add "--debug" switch to print debug message.
 
