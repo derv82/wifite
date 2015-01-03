@@ -1,3 +1,7 @@
+# Version 2.0 Rev 90 #
+- Fixed four typos
+- Automatically find *phpbb.txt* as dictionary file instead of hard-coding the path+
+
 # Version 2.0 Rev 89 #
 - Minor message tweak
 - I accidentally covert the last two releases to evil CRLF line ending, now move back to LF line ending.

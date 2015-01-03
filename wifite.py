@@ -178,7 +178,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 89;
+        self.REVISION = 90;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -598,16 +598,15 @@ class RunConfiguration:
                 self.WPA_DONT_CRACK = False
                 println_info('WPA cracking ' + G + 'enabled')
                 if options.dic:
-                    try:
-                        self.WPA_DICTIONARY = options.dic
-                    except IndexError:
-                        println_error('no WPA dictionary given!')
+                    if os.path.exists(options.dic):
+                        self.WPA_DICTIONARY=options.dic
+                        println_info('WPA dictionary set to %s' % (G + self.WPA_DICTIONARY + W))
                     else:
-                        if os.path.exists(options.dic):
-                            println_info('WPA dictionary set to %s' % (G + self.WPA_DICTIONARY + W))
-                        else:
-                            println_error('WPA dictionary file not found: %s' % (G + options.dic + W))
-                else:
+                        println_error('WPA dictionary file not found: %s' % (G + options.dic + W))
+	        if self.WPA_DICTIONARY == "" and locate('phpbb.txt'):
+                        self.WPA_DICTIONARY=locate('phpbb.txt')
+                        println_info('WPA dictionary automatically set to %s' % (G + self.WPA_DICTIONARY + W))
+                if self.WPA_DICTIONARY == "":
                     println_error('WPA dictionary file not given!')
                     self.exit_gracefully(1)
             if options.tshark:
@@ -1737,9 +1736,9 @@ class RunEngine:
                                     victims.index(target)
                                 except ValueError:
                                     victims.append(target)
-            elif re.match('^e(.*)(\+)?$',timeout) or re.match('^e(.*)(\+)$',timeout): #ESSID
+            elif re.match('^e(.*)(\+)?$',r) or re.match('^e(.*)(\+)$',r): #ESSID
                 matches=re.match('^e(.*)(\+)?$',r)
-                if re.match('^e(.*)(\+)$',timeout): matches=re.match('^e(.*)(\+)$',timeout)
+                if re.match('^e(.*)(\+)$',r): matches=re.match('^e(.*)(\+)$',r)
                 result=matches.groups()
                 ssid=result[0]
                 if remove:
@@ -1759,16 +1758,16 @@ class RunEngine:
             elif re.match('^b([a-zA-z:0-9]+)(\+)?$',r):
                 matches=re.match('^b([a-zA-z:0-9]+)(\+)?$',r)
                 result=matches.groups()
-                result[0]=result[0].upper()
+                bssid=result[0].upper()
                 #print result[0]
                 if remove:
                     for victim in victims:
-                        if victim.bssid.find(result[0]) != -1:
+                        if victim.bssid.find(bssid) != -1:
                             if result[1] == None or (result[1] == "+" and victim.count_clients(clients) > 0):
                                 victims.remove(victim) 
                 else:
                     for target in targets:
-                        if target.bssid.find(result[0]) != -1:
+                        if target.bssid.find(bssid) != -1:
                                 if result[1] == None or (result[1] == "+" and target.count_clients(clients) > 0):
                                     try:
                                         victims.index(target)
@@ -2442,6 +2441,12 @@ def remove_file(filename):
     except OSError:
         pass
 
+def locate(program):
+    proc = Popen(['locate', program], stdout=PIPE, stderr=PIPE)
+    txt = proc.communicate()
+    if txt[0].strip():
+        return txt[0].strip().split('\n')[0]
+    return ""
 
 def program_exists(program):
     """
