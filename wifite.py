@@ -178,7 +178,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 90;
+        self.REVISION = 91;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -204,8 +204,8 @@ class RunConfiguration:
         self.WPA_HANDSHAKE_DIR = 'hs'  # Directory in which handshakes .cap files are stored
         
         # Strip file path separator if needed
-        if self.WPA_HANDSHAKE_DIR != '' and self.WPA_HANDSHAKE_DIR[-1] == os.sep:
-            self.WPA_HANDSHAKE_DIR = self.WPA_HANDSHAKE_DIR[:-1]
+        if self.WPA_HANDSHAKE_DIR != '' and self.WPA_HANDSHAKE_DIR[-1] != os.sep:
+            self.WPA_HANDSHAKE_DIR += os.sep
 
         self.WPA_RECAPTURE_HS=False        
         self.WPA_FINDINGS = []  # List of strings containing info on successful WPA attacks
@@ -224,8 +224,8 @@ class RunConfiguration:
         # WEP variables
         #self.WEP_DISABLE = False  # Flag for ignoring WEP networks
         self.WEP_IVS_DIR = 'wep'  # Directory in which WEP IVS files are stored
-        if self.WEP_IVS_DIR != '' and self.WEP_IVS_DIR[-1] == os.sep:
-            self.WEP_IVS_DIR = self.WEP_IVS_DIR[:-1]
+        if self.WEP_IVS_DIR != '' and self.WEP_IVS_DIR[-1] != os.sep:
+            self.WEP_IVS_DIR += os.sep
         self.WEP_PPS = 600  # packets per second (Tx rate)
         self.WEP_TIMEOUT = 600  # Amount of time to give each attack
         self.WEP_ARP_REPLAY = True  # Various WEP-based attacks via aireplay-ng
@@ -246,7 +246,11 @@ class RunConfiguration:
         self.WPS_TIMEOUT = 660  # Time to wait (in seconds) for successful PIN attempt
         self.WPS_RATIO_THRESHOLD = 0.01  # Lowest percentage of tries/attempts allowed (where tries > 0)
         self.WPS_MAX_RETRIES = 0  # Number of times to re-try the same pin before giving up completely.
-
+        self.WPS_SESSION_DIR = 'wps'  # Directory in which handshakes .cap files are stored
+        self.WPS_SAVE = None
+        # Add file path separator if needed
+        if self.WPS_SESSION_DIR != '' and self.WPS_SESSION_DIR[-1] != os.sep:
+            self.WPS_SESSION_DIR += os.sep
 
         # Program variables
         self.SHOW_ALREADY_CRACKED = False  # Says whether to show already cracked APs as options to crack
@@ -687,7 +691,9 @@ class RunConfiguration:
                     G + str(self.WPS_TIMEOUT) + " seconds" + W))
                 else:
                     println_error('invalid WPS timeout: %s' % (R + str(options.wpst) + W))
-                
+            
+            self.WPS_SAVE = options.wpssave
+
             if options.wpsratio != None:
                 if options.wpsratio > 0:
                     self.WPS_RATIO_THRESHOLD = options.wpsratio
@@ -868,7 +874,8 @@ class RunConfiguration:
         wps_group.add_argument('--wpsretry', metavar='[N]' , type=int, help='Max number of retries for same PIN before giving up.',
                                action='store', dest='wpsretry')
         wps_group.add_argument('-wpsretry', type=int,help=argparse.SUPPRESS, action='store', dest='wpsretry')
-
+        wps_group.add_argument('--wpssave', help='Save progress of WPS PIN attack to "wps" subfolder in current folder.',
+                               default=False, action='store_true', dest='wpssave')
         others_group = option_parser.add_argument_group('OTHERS')
         others_group.add_argument('--update', help='Check and update Wifite.', default=False, action='store_true',
                                   dest='update')
@@ -1266,7 +1273,7 @@ class RunEngine:
                     
 
                     # Remove any already cracked networks if configured to do so
-                    println_debug("Removing cracked...%s" % len(targets))
+                    println_debug("Checking and removing cracked from %d found targets" % len(targets))
                     if self.RUN_CONFIG.SHOW_ALREADY_CRACKED == False:
                         for target in targets:
                             for cracked in self.RUN_CONFIG.CRACKED_TARGETS:
@@ -1353,7 +1360,7 @@ class RunEngine:
                     '''
 
                     if stop_scanning: break
-                    println_debug('Checking unknwon SSIDs...' + hex(channel) + '\n')
+                    println_debug('Checking unknwon SSIDs...\n')
                     #print vars(targets)
                     
                     # If there are unknown SSIDs, send deauths to them.
@@ -1396,13 +1403,13 @@ class RunEngine:
                                     RUN_CONFIG.save_decloaked(target)
                                     force_print = True
                     time.sleep(2)
-                    println_debug ('Checking WPS...' + hex(channel) + '\n')
+                    println_debug ('Checking WPS...\n')
                     if len(targets) > 0:
                         if not self.RUN_CONFIG.WPS_CHECK_DISABLE:
                             wps_check_targets(targets, self.RUN_CONFIG.temp + 'wifite-01.cap', False) #self.RUN_CONFIG.VERBOSE_APS)
                     
-                    println_debug('Checking if should print...')
-                    if force_print  or len(old_targets) != len(targets) or time.time() - last_print_time > 5 :
+                    println_debug('Checking if should print... %s %d %d %d' % (str(force_print), len(old_targets), len(targets),time.time() - last_print_time ))
+                    if force_print or len(old_targets) != len(targets) or time.time() - last_print_time > 5 :
                         os.system('clear')    
                         targets = sorted(targets, key=lambda t: t.power, reverse=True)
                         self.print_targets(targets, clients, self.RUN_CONFIG.SCAN_MAX_ROW_SHOW, self.RUN_CONFIG.COLUMN,self.RUN_CONFIG.SPACING)
@@ -1624,7 +1631,7 @@ class RunEngine:
         #if self.RUN_CONFIG.WPS_DISABLE:
         #    print "  %3s" % (O + 'n/a' + W),
         #else:
-        print_text+="%3s" % (G + 'wps' + W if target.wps else R + ' no' + W)
+        print_text+="%3s" % (G + 'yes' + W if target.wps else R + ' no' + W)
         print_text+=separator*spacing
 
         # Clients
@@ -1852,7 +1859,7 @@ class RunEngine:
                         try:
                             victims.index(target)
                         except ValueError:
-                            victims.append(int(r)-1)
+                            victims.append(target)
                         
                 else:
                         println_warning("invalid input: %s " % (O + input + W))
@@ -1883,25 +1890,22 @@ class RunEngine:
 
         try:
             index = 0
-            while index < len(targets):
-                target = targets[index]
+            for index,target in enumerate(targets):
                 # Check if we have already cracked this target
                 for already in RUN_CONFIG.CRACKED_TARGETS:
-                    if already.bssid == targets[index].bssid:
+                    if already.bssid == target.bssid:
                         if RUN_CONFIG.SHOW_ALREADY_CRACKED == True:
                             println_info('you have already cracked %s (%s), key is "%s" !' % (C + already.ssid + W , G + already.bssid + W, G + already.key + W))
                             ri = raw_input(
                                 GR + ' [+] ' + W + 'do you want to crack this access point again? (' + G + 'y/' + O + 'n' + W + '): ')
                             if ri.lower() == 'n':
                                 targets.pop(index)
-                                index -= 1
                         else:
                             targets.pop(index)
-                            index -= 1
                         break
 
                 # Check if handshakes already exist, ask user whether to skip targets or save new handshakes
-                handshake_file = RUN_CONFIG.WPA_HANDSHAKE_DIR + os.sep + str(target) + '.cap'
+                handshake_file = RUN_CONFIG.WPA_HANDSHAKE_DIR + str(target) + '.cap'
                 if os.path.exists(handshake_file):
 
                     
@@ -1922,8 +1926,6 @@ class RunEngine:
                     #elif ri == 'o':
                     #    remove_file(handshake_file)
                     #    continue
-                index += 1
-
 
         except KeyboardInterrupt:
             print '\n ' + R + '(^C)' + O + ' interrupted\n'
@@ -2526,6 +2528,12 @@ def generate_random_mac(old_mac):
     return new_mac
 
 
+def set_mac_address(iface, mac):
+    call(['ifconfig', iface, 'down'])
+    proc = Popen(['ifconfig', iface, 'hw', 'ether', mac], stdout=PIPE, stderr=DN)
+    proc.wait()
+    call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
+    return True
 def mac_anonymize(iface):
     """
         Changes MAC address of 'iface' to a random MAC.
@@ -2533,28 +2541,19 @@ def mac_anonymize(iface):
         Stores old MAC address and the interface in ORIGINAL_IFACE_MAC
     """
     global RUN_CONFIG
-    if RUN_CONFIG.DO_NOT_CHANGE_MAC: return
-    if not program_exists('ifconfig'): return
+    if RUN_CONFIG.DO_NOT_CHANGE_MAC: return False
+    if not program_exists('ifconfig'): return False
 
     # Store old (current) MAC address
-    proc = Popen(['ifconfig', iface], stdout=PIPE, stderr=DN)
-    proc.wait()
-    for word in proc.communicate()[0].split('\n')[0].split(' '):
-        if word != '': old_mac = word
+    old_mac=get_mac_address(iface)
     RUN_CONFIG.ORIGINAL_IFACE_MAC = (iface, old_mac)
-
     new_mac = generate_random_mac(old_mac)
-
-    call(['ifconfig', iface, 'down'])
 
     print GR + " [+]" + W + " changing %s's MAC from %s to %s..." % (G + iface + W, G + old_mac + W, O + new_mac + W),
     stdout.flush()
-
-    proc = Popen(['ifconfig', iface, 'hw', 'ether', new_mac], stdout=PIPE, stderr=DN)
-    proc.wait()
-    call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
+    set_mac_address(iface,new_mac)
     print 'done'
-
+    return True
 
 def mac_change_back():
     """
@@ -2567,11 +2566,7 @@ def mac_change_back():
 
     print GR + " [+]" + W + " changing %s's mac back to %s..." % (G + iface + W, G + old_mac +W),
     stdout.flush()
-
-    call(['ifconfig', iface, 'down'], stdout=DN, stderr=DN)
-    proc = Popen(['ifconfig', iface, 'hw', 'ether', old_mac], stdout=PIPE, stderr=DN)
-    proc.wait()
-    call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
+    set_mac_address(iface, old_mac)
     print "done"
 
 
@@ -2735,7 +2730,7 @@ class WPAAttack(Attack):
         save_index = 1
         while True:
             # Generate the filename to save the .cap file as <SSID>_aa-bb-cc-dd-ee-ff.cap
-            save_as = self.RUN_CONFIG.WPA_HANDSHAKE_DIR + os.sep + str(self.target) + '_' + str(save_index) + '.cap'
+            save_as = self.RUN_CONFIG.WPA_HANDSHAKE_DIR  + str(self.target) + '_' + str(save_index) + '.cap'
             if not os.path.exists(save_as):
                 break
             save_index += 1
@@ -2823,7 +2818,7 @@ class WPAAttack(Attack):
                     got_handshake = True
 
                     try:
-                        os.mkdir(self.RUN_CONFIG.WPA_HANDSHAKE_DIR + os.sep)
+                        os.mkdir(self.RUN_CONFIG.WPA_HANDSHAKE_DIR)
                     except OSError:
                         pass
 
@@ -3595,7 +3590,7 @@ class WEPAttack(Attack):
         remove_file(self.RUN_CONFIG.temp + 'wepkey.txt')
     def save_wep_packet(self,target, ivs):
         try:
-            path=self.RUN_CONFIG.WEP_IVS_DIR + os.sep
+            path=self.RUN_CONFIG.WEP_IVS_DIR
             os.mkdir(path)
         except OSError:
             pass
@@ -3772,6 +3767,10 @@ class WPSAttack(Attack):
         self.target = target
         self.RUN_CONFIG = config
 
+        try:
+           os.mkdir(self.RUN_CONFIG.WPS_SESSION_DIR)
+        except OSError:
+           pass
     def RunAttack(self):
         '''
             Abstract method for initializing the WPS attack
@@ -3793,15 +3792,32 @@ class WPSAttack(Attack):
         """
         print GR + ' [0:00:00]' + W + ' starting %sWPS PIN attack%s on "%s" (%s) with signal strength %s%ddB%s' % \
                                       (G, W, G + self.target.ssid + W, G + self.target.bssid + W, G, self.target.power, W)
-
+        output_filename=self.RUN_CONFIG.temp + str(self.target) + '.wps'
+        
+        session_filename=re.sub(r'[^a-zA-Z0-9]', '', self.target.bssid) + '.wpc'
+        session_filename_with_path=self.RUN_CONFIG.WPS_SESSION_DIR +  session_filename
+                    
         cmd = ['reaver',
                '-i', self.iface,
                '-b', self.target.bssid,
-               '-o', self.RUN_CONFIG.temp + 'out.out',  # Dump output to file to be monitored
+               '-o', output_filename, # self.RUN_CONFIG.temp + str(self.target) + '.out',  # Dump output to file to be monitored
                '-a',  # auto-detect best options, auto-resumes sessions, doesn't require input!
                '-c', self.target.channel,
                # '--ignore-locks',
                '-vv']  # verbose output
+               
+        backup_session_file = self.RUN_CONFIG.WPS_SAVE
+        last_backup_time=0
+
+        # if progress file found in current folder, load it and disable backup from reaver folder
+        if os.path.exists(session_filename_with_path):
+            cmd += ['-s', session_filename_with_path]
+            backup_session_file = False
+        else:
+            #if progress file found in reaver folder, load it
+            filename='/usr/local/etc/reaver/' + session_filename
+            if os.path.exists(filename):
+                cmd += ['-s', filename]
         proc = Popen(cmd, stdout=DN, stderr=DN)
 
         cracked = False  # Flag for when password/pin is found
@@ -3822,7 +3838,7 @@ class WPSAttack(Attack):
 
                 if proc.poll() != None:
                     # Process stopped: Cracked? Failed?
-                    inf = open(self.RUN_CONFIG.temp + 'out.out', 'r')
+                    inf = open(output_filename, 'r')
                     lines = inf.read().split('\n')
                     inf.close()
                     for line in lines:
@@ -3834,9 +3850,9 @@ class WPSAttack(Attack):
                             cracked = True
                     break
 
-                if not os.path.exists(self.RUN_CONFIG.temp + 'out.out'): continue
+                if not os.path.exists(output_filename): continue
 
-                inf = open(self.RUN_CONFIG.temp + 'out.out', 'r')
+                inf = open(output_filename, 'r')
                 lines = inf.read().split('\n')
                 inf.close()
 
@@ -3883,7 +3899,7 @@ class WPSAttack(Attack):
                     print '\r',
                 else:
                     print '%s complete (%s sec/att)   \r' % (G + percent + W, G + aps + W),
-
+                
                 if self.RUN_CONFIG.WPS_TIMEOUT > 0 and (time.time() - last_success) > self.RUN_CONFIG.WPS_TIMEOUT:
                     print R + '\n [!]' + O + ' unable to complete successful try in %d seconds' % (
                     self.RUN_CONFIG.WPS_TIMEOUT)
@@ -3906,11 +3922,23 @@ class WPSAttack(Attack):
 
                 stdout.flush()
                 # Clear out output file if bigger than 1mb
-                inf = open(self.RUN_CONFIG.temp + 'out.out', 'w')
+                inf = open(output_filename, 'w')
                 inf.close()
-
+                
+                #Backup session file
+                if backup_session_file == True and time.time() - last_backup_time > 30:
+                    last_backup_time = time.time()
+                    filename='/usr/local/etc/reaver/' + session_filename
+                    if os.path.exists(filename):
+                        proc=Popen(['cp',filename,session_filename_with_path], stdout=DN, stderr=DN)
+                        proc.wait()
+                        println_debug("Session file %s backuped to %s" % (filename,session_filename_with_path))
+                    
             # End of big "while not cracked" loop
-
+            filename='/usr/local/etc/reaver/' + session_filename
+            if os.path.exists(filename):
+                proc=Popen(['cp',filename,session_filename_with_path], stdout=DN, stderr=DN)
+                proc.wait()
             if cracked:
                 if pin != '': println_info(G + ' PIN found:     %s' % (C + pin + W))
                 if key != '': println_info('%sWPA key found:%s %s' % (G, W, C + key + W))

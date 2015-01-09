@@ -1,3 +1,8 @@
+# Version 2.0 Rev 91 #
+- Fixed a bug which cause program exit if selecting targets using numbers
+- New switch "--wpssave" to save the progress of WPS PIN attack (useful if you are running live CD and don't want to backup the file manually)
+- Codes clean up
+
 # Version 2.0 Rev 90 #
 - Fixed four typos
 - Automatically find *phpbb.txt* as dictionary file instead of hard-coding the path+
