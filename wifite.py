@@ -115,6 +115,7 @@ DN = open(os.devnull, 'w')
 ERRLOG = open(os.devnull, 'w')
 OUTLOG = open(os.devnull, 'w')
 
+UPDATE_URLS=["https://github.com/derv82/wifite/raw/master/wifite.py","https://github.com/brianpow/wifite/raw/master/wifite.py"]
 ###################
 # DATA STRUCTURES #
 ###################
@@ -178,7 +179,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 91;
+        self.REVISION = 92;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -203,6 +204,12 @@ class RunConfiguration:
         self.WPA_ATTACK_TIMEOUT = 500  # Total time to allow for a handshake attack (in seconds)
         self.WPA_HANDSHAKE_DIR = 'hs'  # Directory in which handshakes .cap files are stored
         
+        # Move old hs folder to wpa folder
+        if not os.path.exists(self.WPA_HANDSHAKE_DIR):
+            self.WPA_HANDSHAKE_DIR='wpa'
+        elif not os.path.exists('wpa'):
+            call(['mv',self.WPA_HANDSHAKE_DIR,'wpa'])
+            self.WPA_HANDSHAKE_DIR='wpa'
         # Strip file path separator if needed
         if self.WPA_HANDSHAKE_DIR != '' and self.WPA_HANDSHAKE_DIR[-1] != os.sep:
             self.WPA_HANDSHAKE_DIR += os.sep
@@ -289,7 +296,7 @@ class RunConfiguration:
                 # Add and save to disk
                 if new:
                     self.save_cracked(OC)
-
+        self.temp = ""
     def ConfirmRunningAsRoot(self):
         if os.getuid() != 0:
             println_error('ERROR:' + G + ' wifite' + O + ' must be run as ' + R + 'root')
@@ -378,7 +385,11 @@ class RunConfiguration:
             tar.key = fields[2]
             result.append(tar)
         return result
-
+    def temp_clean_up(self):
+        if self.temp != "" and os.path.exists(self.temp):
+            for f in os.listdir(self.temp):
+                os.remove(self.temp + f)
+            os.rmdir(self.temp)
     def exit_gracefully(self, code=0):
         """
             We may exit the program at any time.
@@ -387,10 +398,7 @@ class RunConfiguration:
         """
         # Remove temp files and folder
         
-        if self.temp != "" and os.path.exists(self.temp):
-            for f in os.listdir(self.temp):
-                os.remove(self.temp + f)
-            os.rmdir(self.temp)
+        self.temp_clean_up()
         # Disable monitor mode if enabled by us
         self.RUN_ENGINE.disable_monitor_mode()
         # Change MAC address back if spoofed
@@ -561,7 +569,7 @@ class RunConfiguration:
                         println_error('file not found: ' + R + capfile + '\n')
                         self.exit_gracefully(1)
             if options.update:
-                self.upgrade()
+                self.update()
                 exit(0)
             if options.cracked:
                 if len(self.CRACKED_TARGETS) == 0:
@@ -607,8 +615,8 @@ class RunConfiguration:
                         println_info('WPA dictionary set to %s' % (G + self.WPA_DICTIONARY + W))
                     else:
                         println_error('WPA dictionary file not found: %s' % (G + options.dic + W))
-	        if self.WPA_DICTIONARY == "" and locate('phpbb.txt'):
-                        self.WPA_DICTIONARY=locate('phpbb.txt')
+	        if self.WPA_DICTIONARY == "" and file_search('phpbb.txt'):
+                        self.WPA_DICTIONARY=file_search('phpbb.txt')
                         println_info('WPA dictionary automatically set to %s' % (G + self.WPA_DICTIONARY + W))
                 if self.WPA_DICTIONARY == "":
                     println_error('WPA dictionary file not given!')
@@ -693,6 +701,8 @@ class RunConfiguration:
                     println_error('invalid WPS timeout: %s' % (R + str(options.wpst) + W))
             
             self.WPS_SAVE = options.wpssave
+            if options.wpssave:
+                println_info('WPS .wpc file saving ' + G + 'enabled' + W)
 
             if options.wpsratio != None:
                 if options.wpsratio > 0:
@@ -885,74 +895,55 @@ class RunConfiguration:
         
         return option_parser
 
-    def upgrade(self):
+    def update(self):
         """
-            Checks for new version, prompts to upgrade, then
+            Checks for new version, prompts to update, then
             replaces this script with the latest from the repo
         """
+        buffs=[]
+        revs=[]
         try:
-            println_warning('upgrading requires an ' + G + 'internet connection' + W)
-            println_info('checking for latest version...')
-            revision = get_revision()
-            if revision == -1:
-                println_error('unable to access GitHub')
-            elif revision > self.REVISION:
+            println_warning('updating requires an ' + G + 'internet connection' + W)
+            
+            for url in UPDATE_URLS:
+                println_info('checking for latest version from "%s"...' % (G + url + W))
+                buff=get_file(url)
+
+                if buff == False:
+                    println_error('unable to access update url')
+                else:
+
+                    rev=get_revision(buff)
+                    if rev != -1:
+                        println_info('revision %s%d%s found!' % (G, rev, W))
+                        buffs.append(buff)
+                        revs.append(rev)
+
+            latest_rev_index=-1
+            for i,rev in enumerate(revs):
+                if rev > self.REVISION:
+                    if latest_rev_index == -1  or (latest_rev_index != -1 and rev > latest_rev_index):
+                        latest_rev_index = i
+            if latest_rev_index != -1:        
                 print GR + ' [!]' + W + ' a new version is ' + G + 'available!' + W
-                print GR + ' [-]' + W + '   revision:    ' + G + str(revision) + W
-                response = raw_input(GR + ' [+]' + W + ' do you want to upgrade to the latest version? (y/n): ')
+                print GR + ' [-]' + W + '   revision:    ' + G + str(rev[latest_rev_index]) + W
+                response = raw_input(GR + ' [+]' + W + ' do you want to update to the latest version? (y/n): ')
                 if not response.lower().startswith('y'):
                     print GR + ' [-]' + W + ' upgrading ' + O + 'aborted' + W
                     self.exit_gracefully(0)
                     return
                 # Download script, replace with this one
-                print GR + ' [+] ' + G + 'downloading' + W + ' update...'
-                try:
-                    sock = urllib.urlopen('https://github.com/derv82/wifite/raw/master/wifite.py')
-                    page = sock.read()
-                except IOError:
-                    page = ''
-                if page == '':
-                    println_error('unable to download latest version' + W)
-                    self.exit_gracefully(1)
-
-                # Create/save the new script
-                f = open('wifite_new.py', 'w')
-                f.write(page)
-                f.close()
-
-                # The filename of the running script
-                this_file = __file__
-                if this_file.startswith('./'):
-                    this_file = this_file[2:]
-
-                # create/save a shell script that replaces this script with the new one
-                f = open('update_wifite.sh', 'w')
-                f.write('''#!/bin/sh\n
-                           rm -rf ''' + this_file + '''\n
-                           mv wifite_new.py ''' + this_file + '''\n
-                           rm -rf update_wifite.sh\n
-                           chmod +x ''' + this_file + '''\n
-                          ''')
-                f.close()
-
-                # Change permissions on the script
-                returncode = call(['chmod', '+x', 'update_wifite.sh'])
-                if returncode != 0:
-                    println_error('permission change returned unexpected code: ' + str(returncode))
-                    self.exit_gracefully(1)
-                # Run the script
-                returncode = call(['sh', 'update_wifite.sh'])
-                if returncode != 0:
-                    println_error('upgrade script returned unexpected code: ' + str(returncode))
-                    self.exit_gracefully(1)
-
-                println_info('updated!' + W + ' type "./' + this_file + '" to run again')
+                print GR + ' [+] ' + G + 'upgrading...' + W
+                do_update(buff[latest_rev_index])
 
             else:
-                println_info('your copy of wifite is ' + G + 'up to date' + W)
+                if(len(buffs)):
+                    println_info('your copy of wifite is ' + G + 'up to date' + W)
+                else:
+                    println_warning('Unable to access any update sites.')
 
         except KeyboardInterrupt:
-            print R + '\n (^C)' + O + ' wifite upgrade interrupted' + W
+            print R + '\n (^C)' + O + ' wifite update interrupted' + W
         self.exit_gracefully(0)
 
 
@@ -980,12 +971,13 @@ class RunEngine:
                 if isinstance(f,list):
                     found=False
                     for p in f:
-                        if program_exists(p):
+                        println_debug("checking " + p)
+                        if file_search(p):
                             found=True
                     if not found:
                         not_found+=f
                 else:
-                    if not program_exists(f):
+                    if not file_search(f):
                         not_found.append(f)
             if len(not_found):
                 incomplete.append(program)
@@ -1020,12 +1012,12 @@ class RunEngine:
         return True
         # printed = False
         # # Check reaver
-        # if not program_exists('reaver'):
+        # if not file_search('reaver'):
         #     printed = True
         #     println_error('the program ' + R + 'reaver' + O + ' is required for WPS attacks')
         #     print R + '    ' + O + '   available at ' + C + 'http://code.google.com/p/reaver-wps' + W
         #     self.RUN_CONFIG.WPS_ATTACK_DISABLE = True
-        # elif not program_exists('walsh') and not program_exists('wash'):
+        # elif not file_search('walsh') and not file_search('wash'):
         #     printed = True
         #     println_error('reaver\'s scanning tool ' + R + 'walsh' + O + ' (or ' + R + 'wash' + O + ') was not found')
         #     println_error('please re-install reaver or install walsh/wash separately')
@@ -1498,7 +1490,7 @@ class RunEngine:
         println_info('%s%d%s target%s selected.' % (G, len(victims), W, '' if len(victims) == 1 else 's'))
 
         return (victims, clients)
-    def deauth(self,target, clients, time_started, iface, wait = False):
+    def deauth(self, target, clients, time_started, iface, wait = False):
         cmd = ['aireplay-ng',
                '--ignore-negative-one',
                '--deauth', str(self.RUN_CONFIG.WPA_DEAUTH_COUNT),
@@ -2118,13 +2110,13 @@ class RunEngine:
 
         t = Target(self.RUN_CONFIG.TARGET_BSSID, '', '', '', 'WPA', self.RUN_CONFIG.TARGET_ESSID)
 
-        if program_exists('pyrit'):
+        if file_search('pyrit'):
             result = wpa_attack.has_handshake_pyrit(t, capfile)
             println_info('   ' + G + 'pyrit' + W + ':\t\t\t %s' % (
             G + 'found!' + W if result else O + 'not found' + W))
         else:
             println_error('program not found: pyrit')
-        if program_exists('cowpatty'):
+        if file_search('cowpatty'):
             result = wpa_attack.has_handshake_cowpatty(t, capfile, nonstrict=True)
             println_info('   ' + G + 'cowpatty' + W + ' (nonstrict):\t %s' % (
             G + 'found!' + W if result else O + 'not found' + W))
@@ -2133,13 +2125,13 @@ class RunEngine:
             G + 'found!' + W if result else O + 'not found' + W))
         else:
             println_error('program not found: cowpatty')
-        if program_exists('tshark'):
+        if file_search('tshark'):
             result = wpa_attack.has_handshake_tshark(t, capfile)
             println_info('   ' + G + 'tshark' + W + ':\t\t\t %s' % (
             G + 'found!' + W if result else O + 'not found' + W))
         else:
             println_error('program not found: tshark')
-        if program_exists('aircrack-ng'):
+        if file_search('aircrack-ng'):
             result = wpa_attack.has_handshake_aircrack(t, capfile)
             println_info('   ' + G + 'aircrack-ng' + W + ':\t\t %s' % (
             G + 'found!' + W if result else O + 'not found' + W))
@@ -2234,106 +2226,70 @@ def banner(RUN_CONFIG):
     print G + "           " + GR + "/       \\" + G + "             "
     print W
 
+def do_update(buff):
+    
+    # Create/save the new script
+    f = open('wifite_new.py', 'w')
+    f.write(buff)
+    f.close()
 
-def get_revision():
+    # The filename of the running script
+    this_file = __file__
+    if this_file.startswith('./'):
+        this_file = this_file[2:]
+
+    # create/save a shell script that replaces this script with the new one
+    f = open('update_wifite.sh', 'w')
+    f.write('''#!/bin/sh\n
+               rm -rf ''' + this_file + '''\n
+               mv wifite_new.py ''' + this_file + '''\n
+               rm -rf update_wifite.sh\n
+               chmod +x ''' + this_file + '''\n
+              ''')
+    f.close()
+
+    # Change permissions on the script
+    returncode = call(['chmod', '+x', 'update_wifite.sh'])
+    if returncode != 0:
+        println_error('permission change returned unexpected code: ' + str(returncode))
+        self.exit_gracefully(1)
+    # Run the script
+    returncode = call(['sh', 'update_wifite.sh'])
+    if returncode != 0:
+        println_error('update script returned unexpected code: ' + str(returncode))
+        self.exit_gracefully(1)
+
+    println_info('updated!' + W + ' type "./' + this_file + '" to run again')
+def get_file(url):
+    try:
+        sock = urllib.urlopen(url)
+        response = sock.read()
+    except IOError:
+        return False
+
+    return response
+
+def get_revision(buff):
     """
-        Gets latest revision # from the GitHub repository
+        Gets latest revision # from buffer
         Returns : revision#
     """
     irev = -1
 
-    try:
-        sock = urllib.urlopen('https://github.com/derv82/wifite/raw/master/wifite.py')
-        page = sock.read()
-    except IOError:
-        return (-1, '', '')
-
     # get the revision
-    start = page.find('REVISION = ')
-    stop = page.find(";", start)
+    start = buff.find('REVISION = ')
+    stop = buff.find(";", start)
     if start != -1 and stop != -1:
         start += 11
-        rev = page[start:stop]
+        rev = buff[start:stop]
         try:
             irev = int(rev)
         except ValueError:
             rev = rev.split('\n')[0]
             print R + '[+] invalid revision number: "' + rev + '"'
-
     return irev
 
 
-#OBSOLETE
-'''
-def help():
-    """
-        Prints help screen
-    """
-
-    head = W
-    sw = G
-    var = GR
-    des = W
-    de = G
-
-    print head + '   COMMANDS' + W
-    print sw + '\t-check ' + var + '<file>\t' + des + 'check capfile ' + var + '<file>' + des + ' for handshakes.' + W
-    print sw + '\t-cracked    \t' + des + 'display previously-cracked access points' + W
-    print sw + '\t-recrack    \t' + des + 'allow recracking of previously cracked access points' + W
-    print ''
-
-    print head + '   GLOBAL' + W
-    print sw + '\t-all         \t' + des + 'attack all targets. (equivalent to: -target all -timeout 10) ' + de + '[off]' + W
-    #print sw+'\t-pillage     \t'+des+'attack all targets in a looping fashion.'+de+'[off]'+W
-    print sw + '\t-i ' + var + '<iface>  \t' + des + 'wireless interface for capturing ' + de + '[auto]' + W
-    print sw + '\t-mon-iface ' + var + '<monitor_interface>  \t' + des + 'interface in monitor mode for capturing ' + de + '[auto]' + W
-    print sw + '\t-mac         \t' + des + 'anonymize mac address            ' + de + '[off]' + W
-    print sw + '\t-c ' + var + '<channel>\t' + des + 'channel to scan for targets      ' + de + '[auto]' + W
-    print sw + '\t-e ' + var + '<essid>  \t' + des + 'target a specific access point by ssid (name)  ' + de + '[ask]' + W
-    print sw + '\t-b ' + var + '<bssid>  \t' + des + 'target a specific access point by bssid (mac)  ' + de + '[auto]' + W
-    print sw + '\t-showb       \t' + des + 'display target BSSIDs after scan               ' + de + '[off]' + W
-    print sw + '\t-pow ' + var + '<db>   \t' + des + 'attacks any targets with signal strenghth > ' + var + 'db ' + de + '[0]' + W
-    print sw + '\t-quiet       \t' + des + 'do not print list of APs during scan           ' + de + '[off]' + W
-    print sw + '\t-timeout       \t' + des + 'stop scanning after timeout value           ' + de + '[off]' + W
-    print sw + '\t-target       \t' + des + 'select target           ' + de + '[off]' + W
-    print ''
-
-    print head + '\n   WPA' + W
-    print sw + '\t-wpa        \t' + des + 'only target WPA networks (works with -wps -wep)   ' + de + '[off]' + W
-    print sw + '\t-wpat ' + var + '<sec>   \t' + des + 'time to wait for WPA attack to complete (seconds) ' + de + '[500]' + W
-    print sw + '\t-wpadt ' + var + '<sec>  \t' + des + 'time to wait between sending deauth packets (sec) ' + de + '[10]' + W
-    print sw + '\t-strip      \t' + des + 'strip handshake using tshark or pyrit             ' + de + '[off]' + W
-    print sw + '\t-crack ' + var + '<dic>\t' + des + 'crack WPA handshakes using ' + var + '<dic>' + des + ' wordlist file    ' + de + '[off]' + W
-    print sw + '\t-dict ' + var + '<file>\t' + des + 'specify dictionary to use when cracking WPA ' + de + '[phpbb.txt]' + W
-    print sw + '\t-aircrack   \t' + des + 'verify handshake using aircrack ' + de + '[on]' + W
-    print sw + '\t-pyrit      \t' + des + 'verify handshake using pyrit    ' + de + '[off]' + W
-    print sw + '\t-tshark     \t' + des + 'verify handshake using tshark   ' + de + '[on]' + W
-    print sw + '\t-cowpatty   \t' + des + 'verify handshake using cowpatty ' + de + '[off]' + W
-
-    print head + '\n   WEP' + W
-    print sw + '\t-wep        \t' + des + 'only target WEP networks ' + de + '[off]' + W
-    print sw + '\t-pps ' + var + '<num>  \t' + des + 'set the number of packets per second to inject ' + de + '[600]' + W
-    print sw + '\t-wept ' + var + '<sec> \t' + des + 'sec to wait for each attack, 0 implies endless ' + de + '[600]' + W
-    print sw + '\t-chopchop   \t' + des + 'use chopchop attack      ' + de + '[on]' + W
-    print sw + '\t-arpreplay  \t' + des + 'use arpreplay attack     ' + de + '[on]' + W
-    print sw + '\t-fragment   \t' + des + 'use fragmentation attack ' + de + '[on]' + W
-    print sw + '\t-caffelatte \t' + des + 'use caffe-latte attack   ' + de + '[on]' + W
-    print sw + '\t-p0841      \t' + des + 'use -p0841 attack        ' + de + '[on]' + W
-    print sw + '\t-hirte      \t' + des + 'use hirte (cfrag) attack ' + de + '[on]' + W
-    print sw + '\t-nofakeauth \t' + des + 'stop attack if fake authentication fails    ' + de + '[off]' + W
-    print sw + '\t-wepca ' + GR + '<n>  \t' + des + 'start cracking when number of ivs surpass n ' + de + '[10000]' + W
-    print sw + '\t-wepsave    \t' + des + 'save a copy of .cap files to this directory ' + de + '[off]' + W
-
-    print head + '\n   WPS' + W
-    print sw + '\t-wps       \t' + des + 'only target WPS networks         ' + de + '[off]' + W
-    print sw + '\t-wpst ' + var + '<sec>  \t' + des + 'max wait for new retry before giving up (0: never)  ' + de + '[660]' + W
-    print sw + '\t-wpsratio ' + var + '<per>\t' + des + 'min ratio of successful PIN attempts/total tries    ' + de + '[0]' + W
-    print sw + '\t-wpsretry ' + var + '<num>\t' + des + 'max number of retries for same PIN before giving up ' + de + '[0]' + W
-
-    print head + '\n   EXAMPLE' + W
-    print sw + '\t./wifite.py ' + W + '-wps -wep -c 6 -pps 600' + W
-    print ''
-'''
 
 ###########################
 # WIRELESS CARD FUNCTIONS #
@@ -2346,10 +2302,6 @@ def help():
 # SCANNING FUNCTIONS #
 ######################
 
-
-
-
-
 def wps_check_targets(targets, cap_file, verbose=True):
     """
         Uses reaver's "walsh" (or wash) program to check access points in cap_file
@@ -2357,10 +2309,10 @@ def wps_check_targets(targets, cap_file, verbose=True):
     """
     global RUN_CONFIG
 
-    if not program_exists('walsh') and not program_exists('wash'):
+    if not file_search('walsh') and not file_search('wash'):
         RUN_CONFIG.WPS_ATTACK_DISABLE = True  # Tell 'scan' we were unable to execute walsh
         return
-    program_name = 'walsh' if program_exists('walsh') else 'wash'
+    program_name = 'walsh' if file_search('walsh') else 'wash'
 
     if len(targets) == 0 or not os.path.exists(cap_file): return
     if verbose:
@@ -2443,26 +2395,18 @@ def remove_file(filename):
     except OSError:
         pass
 
-def locate(program):
-    proc = Popen(['locate', program], stdout=PIPE, stderr=PIPE)
-    txt = proc.communicate()
-    if txt[0].strip():
-        return txt[0].strip().split('\n')[0]
-    return ""
-
-def program_exists(program):
+def file_search(program):
     """
-        Uses 'which' (linux command) to check if a program is installed.
+        Uses 'which' or 'locate' (linux command) to check if a program is installed.
     """
+    searchers=[['which','',''],['locate','/','$']] #['whereis','',''],
+    for searcher in searchers:
+        proc = Popen([searcher[0], searcher[1] + program + searcher[2]], stdout=PIPE, stderr=PIPE)
+        txt = proc.communicate()
+        if txt[0].strip() != '' and txt[1].strip() == '':
+            return txt[0].strip().split("\n")[0]
 
-    proc = Popen(['which', program], stdout=PIPE, stderr=PIPE)
-    txt = proc.communicate()
-    if txt[0].strip() == '' and txt[1].strip() == '':
-        return False
-    if txt[0].strip() != '' and txt[1].strip() == '':
-        return True
-
-    return not (txt[1].strip() == '' or txt[1].find('no %s in' % program) != -1)
+    return False
 
 
 def sec_to_hms(sec):
@@ -2542,7 +2486,7 @@ def mac_anonymize(iface):
     """
     global RUN_CONFIG
     if RUN_CONFIG.DO_NOT_CHANGE_MAC: return False
-    if not program_exists('ifconfig'): return False
+    if not file_search('ifconfig'): return False
 
     # Store old (current) MAC address
     old_mac=get_mac_address(iface)
@@ -2575,7 +2519,7 @@ def get_essid_from_cap(bssid, capfile):
         Attempts to get ESSID from cap file using BSSID as reference.
         Returns '' if not found.
     """
-    if not program_exists('tshark'): return ''
+    if not file_search('tshark'): return ''
 
     cmd = ['tshark',
            '-r', capfile,
@@ -2600,7 +2544,7 @@ def get_bssid_from_cap(essid, capfile):
     """
     global RUN_CONFIG
 
-    if not program_exists('tshark'): return ''
+    if not file_search('tshark'): return ''
 
     # Attempt to get BSSID based on ESSID
     if essid != '':
@@ -2890,7 +2834,7 @@ class WPAAttack(Attack):
             Uses TShark to check for a handshake.
             Returns "True" if handshake is found, false otherwise.
         """
-        if program_exists('tshark'):
+        if file_search('tshark'):
             # Call Tshark to return list of EAPOL packets in cap file.
             cmd = ['tshark',
                    '-r', capfile,  # Input file
@@ -2977,7 +2921,7 @@ class WPAAttack(Attack):
             Uses cowpatty to check for a handshake.
             Returns "True" if handshake is found, false otherwise.
         """
-        if not program_exists('cowpatty'): return False
+        if not file_search('cowpatty'): return False
 
         # Call cowpatty to check if capfile contains a valid handshake.
         cmd = ['cowpatty',
@@ -3002,7 +2946,7 @@ class WPAAttack(Attack):
             Uses pyrit to check for a handshake.
             Returns "True" if handshake is found, false otherwise.
         """
-        if not program_exists('pyrit'): return False
+        if not file_search('pyrit'): return False
 
         # Call pyrit to "Analyze" the cap file's handshakes.
         cmd = ['pyrit',
@@ -3031,7 +2975,7 @@ class WPAAttack(Attack):
             Uses aircrack-ng to check for handshake.
             Returns True if found, False otherwise.
         """
-        if not program_exists('aircrack-ng'): return False
+        if not file_search('aircrack-ng'): return False
         crack = 'echo "" | aircrack-ng -a 2 -w - -b ' + target.bssid + ' ' + capfile
         proc_crack = Popen(crack, stdout=PIPE, stderr=DN, shell=True)
         proc_crack.wait()
@@ -3079,14 +3023,14 @@ class WPAAttack(Attack):
             File in location 'capfile' is overwritten!
         """
         output_file = capfile
-        if program_exists('pyrit'):
+        if file_search('pyrit'):
             cmd = ['pyrit',
                    '-r', capfile,
                    '-o', output_file,
                    'stripLive']
             call(cmd, stdout=DN, stderr=DN)
 
-        elif program_exists('tshark'):
+        elif file_search('tshark'):
             # strip results with tshark
             cmd = ['tshark',
                    '-r', capfile,  # input file

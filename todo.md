@@ -13,11 +13,11 @@
 * Save reaver.db?
 
 # WEP # 
-* Ability to pause/skip/continue    (done, not tested)
 * Option to capture only IVS packets (uses --output-format ivs,csv)
    - not compatible on older aircrack-ng's.
       + Just run "airodump-ng --output-format ivs,csv", "No interface specified" = works
    - would cut down on size of saved .caps
+* Include previously captured IVs in total_IVs
 
 # reaver # 
 * MONITOR ACTIVITY!

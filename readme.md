@@ -20,17 +20,17 @@ Execution
 
 To download and execute wifite, run the commands below:
 
-`wget https://raw.github.com/derv82/wifite/master/wifite.py`  
+`wget https://github.com/derv82/wifite/raw/master/wifite.py` (devr82's version) or `wget https://github.com/brianpow/wifite/raw/master/wifite.py` (brianpow's version)  
 `chmod +x wifite.py`  
 `./wifite.py`  
 
 
-### More Complex Examples ###
+### More Complex Examples (only work in brianpow's version)###
 
 ```
-wifite.py --mac --showb --attack all,-eMYWIFI,-wpa0 --timeout 120,e,n\>50 --nowps --save ap.csv --two
+wifite.py --mac --showb --attack all,-eMYWIFI,-wpa0 --timeout 120,e,n\>50 --save ap.csv --two --wpssave --wepsave
 ```
-Meaning: Anonymize my MAC address; show BSSID when scanning; attack all APs excepts APs with name containing MYWIFI, exclude WPA APs without client; Disable WPS attack; Automatically attack APs after scanning for 120 seconds, or if hidden network is detected, or if total targets are more than 50; Save scanned APs into ap.csv; List APs in two columns.
+Meaning: Anonymize my MAC address; show BSSID when scanning; attack all APs excepts APs with name containing MYWIFI, exclude WPA APs without client; Automatically attack APs after scanning for 120 seconds, or if hidden network is detected, or if total targets are more than 50; Save scanned APs into ap.csv; List APs in two columns; Save progress of WPS PIN attack in 'wps' folder under current folder; Save captured IVs file in 'wep' folder under current folder.
 
 
 Required Programs

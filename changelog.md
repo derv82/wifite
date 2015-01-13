@@ -1,3 +1,8 @@
+# Version 2.0 Rev 92 #
+- Codes clean up, slighly more modular
+- Update route improved
+- Change default folder for WPA handshake from 'hs' to 'wpa', old folder will be renamed automatically
+
 # Version 2.0 Rev 91 #
 - Fixed a bug which cause program exit if selecting targets using numbers
 - New switch "--wpssave" to save the progress of WPS PIN attack (useful if you are running live CD and don't want to backup the file manually)
