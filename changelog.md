@@ -1,3 +1,15 @@
+# Version 2.0 Rev 93 #
+## WEP ##
+- Behavior changes: Captured IVs during WEP attack will be saved to 'wep' folder under current directory by default, use "--wepnosave" to disable saving cap/ivs, "--wepsave" switch removed.
+- Automatically count previously saved IV file when attacking WEP network. (*not very accurate, maybe duplicated IV in captured file?)
+- New switch "--wepsaveiv" to capture only IV packets (smaller file size) when attacking WEP network.
+- Continue capturing if IVs is not enough to solve the key.
+## WPA ##
+- WPA cracking using pyrit and cowpatty added, option to use hash file (*experimental*) added.
+## Others ##
+- Network functions clean up. Now more object-orientated.
+- Fixed an error when analyzing .cap file.
+
 # Version 2.0 Rev 92 #
 - Codes clean up, slighly more modular
 - Update route improved
@@ -10,7 +22,7 @@
 
 # Version 2.0 Rev 90 #
 - Fixed four typos
-- Automatically find *phpbb.txt* as dictionary file instead of hard-coding the path+
+- Automatically find *phpbb.txt* as dictionary file instead of hard-coding the path
 
 # Version 2.0 Rev 89 #
 - Minor message tweak
