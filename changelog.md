@@ -2,12 +2,18 @@
 ## WEP ##
 - Behavior changes: Captured IVs during WEP attack will be saved to 'wep' folder under current directory by default, use "--wepnosave" to disable saving cap/ivs, "--wepsave" switch removed.
 - Automatically count previously saved IV file when attacking WEP network. (*not very accurate, maybe duplicated IV in captured file?)
+- More progress information (e.g. estimated finish time, additional IVs required) is shown when attacking WEP network.
 - New switch "--wepsaveiv" to capture only IV packets (smaller file size) when attacking WEP network.
-- Continue capturing if IVs is not enough to solve the key.
+- Continue capturing if IVs are not enough to solve the key.
+
 ## WPA ##
 - WPA cracking using pyrit and cowpatty added, option to use hash file (*experimental*) added.
-## Others ##
+
+## Network Interface ##
 - Network functions clean up. Now more object-orientated.
+- Switch "--mon-iface" removed, now wifite will determine automatically if the interface is already in monitor mode. Please use "-i" instead. 
+
+## Others ##
 - Fixed an error when analyzing .cap file.
 
 # Version 2.0 Rev 92 #
