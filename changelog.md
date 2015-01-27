@@ -1,6 +1,10 @@
+# Version 2.0 Rev 95 #
+## WEP ##
+- One bug fixed (Thanks Andrea from BackBox Linux)
+
 # Version 2.0 Rev 94 #
 ## WEP ##
-- Fix one typo (Reported by Andrea from BackBox Linux)
+- One typo fixed (Reported by Andrea from BackBox Linux)
 
 # Version 2.0 Rev 93 #
 ## WEP ##

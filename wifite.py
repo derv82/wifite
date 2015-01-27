@@ -203,7 +203,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 94;
+        self.REVISION = 95;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -3404,7 +3404,7 @@ class WEPAttack(Attack):
                '-a', '1',
                '-l', self.key_file]
         #temp + 'wep-01.cap']
-        # Append all .cap/.ivs files in temp directory (in case we are resuming) #TODO
+        # Append all .cap/.ivs files in temp directory (in case we are resuming)
         ext = ".cap"
         if self.RUN_CONFIG.WEP_SAVE_IV:
             ext = ".ivs"
@@ -3412,10 +3412,11 @@ class WEPAttack(Attack):
         
         for f in files:
             cmd.append(f)
-        # Append all .cap/.ivs files in wep directory (in case we are resuming) #TODO
-        for f in os.listdir(self.RUN_CONFIG.WEP_IVS_DIR):
-            if f.startswith(str(self.target)) and (f.endswith('.cap') or f.endswith('.ivs')):
-                cmd.append(self.RUN_CONFIG.WEP_IVS_DIR + f)
+        # Append all .cap/.ivs files in wep directory (in case we are resuming)
+        if os.path.exists(self.RUN_CONFIG.WEP_IVS_DIR):
+            for f in os.listdir(self.RUN_CONFIG.WEP_IVS_DIR):
+                if f.startswith(str(self.target)) and (f.endswith('.cap') or f.endswith('.ivs')):
+                    cmd.append(self.RUN_CONFIG.WEP_IVS_DIR + f)
         println_debug(" ".join(cmd))
         print "\n"
         print "\r %s started %s (%sover %d ivs%s)" % (
