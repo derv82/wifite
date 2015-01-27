@@ -203,7 +203,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 93;
+        self.REVISION = 94;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -3490,7 +3490,7 @@ class WEPAttack(Attack):
                 last_deauth=0
                 if self.wep_fake_auth(self.iface.iface, self.target, sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT)):
                     # Successful fake auth
-                    client_mac = iface.get_mac()
+                    client_mac = self.iface.get_mac()
                 elif not self.RUN_CONFIG.WEP_IGNORE_FAKEAUTH:
                     send_interrupt(proc_aireplay)
                     send_interrupt(proc_airodump)

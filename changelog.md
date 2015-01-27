@@ -1,3 +1,7 @@
+# Version 2.0 Rev 94 #
+## WEP ##
+- Fix one typo (Reported by Andrea from BackBox Linux)
+
 # Version 2.0 Rev 93 #
 ## WEP ##
 - Behavior changes: Captured IVs during WEP attack will be saved to 'wep' folder under current directory by default, use "--wepnosave" to disable saving cap/ivs, "--wepsave" switch removed.
