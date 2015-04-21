@@ -1512,11 +1512,10 @@ class RunEngine:
                     if len(row) < 2:
                         continue
                     if not hit_clients:
-                        if len(row) < 14:
-                            continue
                         if row[0].strip() == 'Station MAC':
                             hit_clients = True
                         if row[0].strip() == 'BSSID' or row[0].strip() == 'Station Mac': continue
+                        if len(row) < 14: continue
                         enc = row[5].strip()
                         wps = False
                         if enc.find('WPA') == -1 and enc.find('WEP') == -1: continue
