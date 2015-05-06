@@ -180,7 +180,7 @@ class RunConfiguration:
 
         self.WPA_FINDINGS = []  # List of strings containing info on successful WPA attacks
         self.WPA_DONT_CRACK = False  # Flag to skip cracking of handshakes
-        self.WPA_DICTIONARY = '/pentest/web/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
+        self.WPA_DICTIONARY = '/usr/share/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
         if not os.path.exists(self.WPA_DICTIONARY): self.WPA_DICTIONARY = ''
 
         # Various programs to use when checking for a four-way handshake.
