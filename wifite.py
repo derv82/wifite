@@ -998,7 +998,7 @@ class RunEngine:
 
         proc = Popen(['airmon-ng'], stdout=PIPE, stderr=DN)
         for line in proc.communicate()[0].split('\n'):
-            if len(line) == 0 or line.startswith('Interface'): continue
+            if len(line) == 0 or line.startswith('Interface') or line.startswith('PHY'): continue
             monitors.append(line)
 
         if len(monitors) == 0:
@@ -1011,6 +1011,7 @@ class RunEngine:
 
         elif len(monitors) == 1:
             monitor = monitors[0][:monitors[0].find('\t')]
+            if monitor.startswith('phy'): monitor = monitors[0].split()[1]
             return self.enable_monitor_mode(monitor)
 
         print GR + " [+]" + W + " available wireless devices:"
