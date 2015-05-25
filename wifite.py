@@ -180,8 +180,12 @@ class RunConfiguration:
 
         self.WPA_FINDINGS = []  # List of strings containing info on successful WPA attacks
         self.WPA_DONT_CRACK = False  # Flag to skip cracking of handshakes
-        self.WPA_DICTIONARY = '/usr/share/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
-        if not os.path.exists(self.WPA_DICTIONARY): self.WPA_DICTIONARY = ''
+        if os.path.exists('/usr/share/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'):
+            self.WPA_DICTIONARY = '/usr/share/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
+        elif os.path.exists('/usr/share/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'):
+            self.WPA_DICTIONARY = '/usr/share/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
+        else:
+            self.WPA_DICTIONARY = ''
 
         # Various programs to use when checking for a four-way handshake.
         # True means the program must find a valid handshake in order for wifite to recognize a handshake.
@@ -1505,7 +1509,7 @@ class RunEngine:
                 print GR + ' [+]' + W + ' starting ' + G + 'WPA cracker' + W + ' on %s%d handshake%s' % (
                 G, caps, W if caps == 1 else 's' + W)
                 for cap in self.RUN_CONFIG.WPA_CAPS_TO_CRACK:
-                    wpa_crack(cap)
+                    wpa_crack(cap, self.RUN_CONFIG)
 
         print ''
         self.RUN_CONFIG.exit_gracefully(0)
@@ -2193,6 +2197,7 @@ class WPAAttack(Attack):
             got_handshake = False
 
             seconds_running = 0
+            seconds_since_last_deauth = 0
 
             target_clients = self.clients[:]
             client_index = -1
@@ -2206,6 +2211,7 @@ class WPAAttack(Attack):
                     print ""
                     break
                 time.sleep(1)
+                seconds_since_last_deauth += int(time.time() - start_time - seconds_running)
                 seconds_running = int(time.time() - start_time)
 
                 print "                                                          \r",
@@ -2213,7 +2219,8 @@ class WPAAttack(Attack):
                       (GR + sec_to_hms(self.RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running) + W),
                 stdout.flush()
 
-                if seconds_running % self.RUN_CONFIG.WPA_DEAUTH_TIMEOUT == 0:
+                if seconds_since_last_deauth > self.RUN_CONFIG.WPA_DEAUTH_TIMEOUT:
+                    seconds_since_last_deauth = 0
                     # Send deauth packets via aireplay-ng
                     cmd = ['aireplay-ng',
                            '--ignore-negative-one',
@@ -2524,9 +2531,10 @@ class WPAAttack(Attack):
         if program_exists('pyrit'):
             cmd = ['pyrit',
                    '-r', capfile,
-                   '-o', output_file,
+                   '-o', capfile + '.temp',
                    'stripLive']
             call(cmd, stdout=DN, stderr=DN)
+            rename(capfile + '.temp', output_file)
 
         elif program_exists('tshark'):
             # strip results with tshark
