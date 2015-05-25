@@ -162,7 +162,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 86;
+        self.REVISION = 87;
         self.PRINTED_SCANNING = False
 
         self.TX_POWER = 0  # Transmit power for wireless interface, 0 uses default power
@@ -208,6 +208,7 @@ class RunConfiguration:
 
         # WPS variables
         self.WPS_DISABLE = False  # Flag to skip WPS scan and attacks
+        self.PIXIE = False
         self.WPS_FINDINGS = []  # List of (successful) results of WPS attacks
         self.WPS_TIMEOUT = 660  # Time to wait (in seconds) for successful PIN attempt
         self.WPS_RATIO_THRESHOLD = 0.01  # Lowest percentage of tries/attempts allowed (where tries > 0)
@@ -1525,13 +1526,16 @@ class RunEngine:
                     if len(row) < 2:
                         continue
                     if not hit_clients:
-                        if len(row) < 14:
-                            continue
                         if row[0].strip() == 'Station MAC':
                             hit_clients = True
-                        if row[0].strip() == 'BSSID' or row[0].strip() == 'Station Mac': continue
+                            continue
+                        if len(row) < 14:
+                            continue
+                        if row[0].strip() == 'BSSID':
+                            continue
                         enc = row[5].strip()
                         wps = False
+                        # Ignore non-WPA and non-WEP encryption
                         if enc.find('WPA') == -1 and enc.find('WEP') == -1: continue
                         if self.RUN_CONFIG.WEP_DISABLE and enc.find('WEP') != -1: continue
                         if self.RUN_CONFIG.WPA_DISABLE and self.RUN_CONFIG.WPS_DISABLE and enc.find(
@@ -1539,6 +1543,8 @@ class RunEngine:
                         if enc == "WPA2WPA" or enc == "WPA2 WPA":
                             enc = "WPA2"
                             wps = True
+                        if len(enc) > 4:
+                            enc = enc[4:].strip()
                         power = int(row[8].strip())
 
                         ssid = row[13].strip()
@@ -1570,7 +1576,7 @@ class RunEngine:
             Prints results to console.
         """
         # we're not running an attack
-        wpa_attack = WPAAttack(None, None, None)
+        wpa_attack = WPAAttack(None, None, None, None)
 
         if self.RUN_CONFIG.TARGET_ESSID == '' and self.RUN_CONFIG.TARGET_BSSID == '':
             print R + ' [!]' + O + ' target ssid and bssid are required to check for handshakes'
@@ -1578,7 +1584,7 @@ class RunEngine:
             print R + ' [!]' + O + ' and/or target bssid (mac address) using -b <mac>\n'
             # exit_gracefully(1)
 
-        if self.UN_CONFIG.TARGET_BSSID == '':
+        if self.RUN_CONFIG.TARGET_BSSID == '':
             # Get the first BSSID found in tshark!
             self.RUN_CONFIG.TARGET_BSSID = get_bssid_from_cap(self.RUN_CONFIG.TARGET_ESSID, capfile)
             # if TARGET_BSSID.find('->') != -1: TARGET_BSSID == ''
@@ -2381,8 +2387,11 @@ class WPAAttack(Attack):
 
                     src = fields[2].lower()  # Source MAC address
                     dst = fields[4].lower()  # Destination MAC address
-                    #msg = fields[9][0]      # The message number (1, 2, 3, or 4)
-                    msg = fields[-1][0]
+                    if len(fields) == 12:
+                        # "Message x of y" format
+                        msg = fields[9][0]
+                    else:
+                        msg = fields[-1][0]
 
                     # First, third msgs in 4-way handshake are from the target to client
                     if msg_num % 2 == 1 and (src != target.bssid.lower() or dst != client):
