@@ -1,5 +1,14 @@
+# Version 2.0 Rev 99 #
+## WPS ##
+- Partially merged the commit from derv82/wifite/commit/30dcc8d99223f8e5faa2f9fa62ab8f392b2d4c67 for WPS pixie dust attack
+- WPS session is now saved by default (use '--wpsnosave' to override)
+- Check the existence of Pixiewps 
+## OTHERS ##
+- MAC address anonymizing is enabled by default (use '--realmac' to override)
+
 # Version 2.0 Rev 98 #
-- Partially merged the commit from derv82/wifite/commit/edbdedd149254f58a99d2f53e5e9b8105c4c61bb to fix the bug in strip_handshake function
+## WPA ##
+- Partially merged the commit from derv82/wifite/commit/edbdedd149254f58a99d2f53e5e9b8105c4c61bb (fix the bug in strip_handshake function)
 
 # Version 2.0 Rev 97 #
 - One minor bug fixed
