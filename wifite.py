@@ -203,7 +203,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 96;
+        self.REVISION = 98;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -3301,13 +3301,14 @@ class WPAAttack(Attack):
             Uses Tshark or Pyrit to strip all non-handshake packets from a .cap file
             File in location 'capfile' is overwritten!
         """
-        output_file = capfile
+        
         if file_search('pyrit'):
             cmd = ['pyrit',
                    '-r', capfile,
-                   '-o', output_file,
+                   '-o', capfile + '.temp',
                    'stripLive']
             call(cmd, stdout=DN, stderr=DN)
+            rename(capfile + '.temp', output_file)
 
         elif file_search('tshark'):
             # strip results with tshark

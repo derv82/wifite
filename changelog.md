@@ -1,3 +1,6 @@
+# Version 2.0 Rev 98 #
+- Partially merged the commit from derv82/wifite/commit/edbdedd149254f58a99d2f53e5e9b8105c4c61bb to fix the bug in strip_handshake function
+
 # Version 2.0 Rev 97 #
 - One minor bug fixed
 
