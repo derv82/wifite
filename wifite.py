@@ -2431,7 +2431,7 @@ class Interface:
         
     def disable_monitor_mode(self):  #disable_monitor_mode
 
-        print_info('disabling monitor mode on %s...' % (G + iface+ W))
+        print_info('disabling monitor mode on %s...' % (G + self.iface+ W))
         stdout.flush()
 
         for mon in self.monitor_mode:
