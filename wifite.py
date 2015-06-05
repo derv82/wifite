@@ -203,7 +203,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 95;
+        self.REVISION = 96;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -1093,7 +1093,7 @@ class RunEngine:
         using_rtl8187 = False
         for line in proc_airmon.communicate()[0].split():
             line = line.upper()
-            if line.strip() == '' or line.startswith('INTERFACE'): continue
+            if line.strip() == '' or line.startswith('INTERFACE') or line.startswith('PHY'): continue
             if line.find(iface.upper()) and line.find('RTL8187') != -1: using_rtl8187 = True
 
         if not using_rtl8187:
@@ -3413,6 +3413,7 @@ class WEPAttack(Attack):
         for f in files:
             cmd.append(f)
         # Append all .cap/.ivs files in wep directory (in case we are resuming)
+
         if os.path.exists(self.RUN_CONFIG.WEP_IVS_DIR):
             for f in os.listdir(self.RUN_CONFIG.WEP_IVS_DIR):
                 if f.startswith(str(self.target)) and (f.endswith('.cap') or f.endswith('.ivs')):
@@ -3516,7 +3517,7 @@ class WEPAttack(Attack):
 
                 print ""
                 self.print_progress(current_hms, time_started, ivs, past_total_ivs)
-                time.sleep(1)
+                #time.sleep(1)
                 # if attack_num == 1:
                 #     # Send a deauth packet to broadcast and all clients *just because!*
                 #     self.wep_send_deauths(self.iface.iface, self.target, self.clients)
@@ -3524,6 +3525,7 @@ class WEPAttack(Attack):
 
                 replaying = False
                 #time_started = time.time()
+                println_debug("3528")
                 while self.RUN_CONFIG.WEP_TIMEOUT == -1 or time.time() - time_started < self.RUN_CONFIG.WEP_TIMEOUT:
                     current_hms = sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT - (time.time() - time_started))
                     # time.sleep(5)
@@ -3538,22 +3540,24 @@ class WEPAttack(Attack):
                     
 
                     # Calculates total seconds remaining
-
+                    println_debug("3543")
                     # Check number of IVs captured
                     ivs = self.count_ivs(self.dump_file_prefix + '-01.csv')
                     if ivs:
                         print "\r                                                             ",
                         self.print_progress(current_hms, time_started, ivs, past_total_ivs)
                     # If no packet captured, deauth to generate packet
+                    println_debug("3550")
                     if ivs - last_ivs == 0 and time.time() - last_deauth > 30:
                         print "\r %s deauthing to generate packets..." % (GR + current_hms + W),
                         self.wep_send_deauths(self.iface.iface, self.target, self.clients)
                         print "done\r",
                         last_deauth = time.time()
+                        stdout.flush()
 
 
-                    stdout.flush()
                     
+                    println_debug("3557")
                     # Check if captured IVS enough for cracking
                     if past_total_ivs + ivs >= self.RUN_CONFIG.WEP_CRACK_AT_IVS and not started_cracking:
                         # Start cracking
@@ -3562,8 +3566,10 @@ class WEPAttack(Attack):
 
                     # Not sure if the following code can be removed
 
+                    println_debug("3566")
                     # Check if key has been cracked yet.
                     if started_cracking:
+                        print type(self.is_cracked()),self.is_cracked()
                         if self.is_cracked() == None: # Cracking
                             None
                         #     ivs = self.count_ivs(self.dump_file_prefix + '-01.csv')
@@ -3601,7 +3607,7 @@ class WEPAttack(Attack):
                             remove_airodump_files(self.dump_file_prefix)
                             remove_file(self.key_file)
                             return True
-
+                    println_debug("3607")
                     # Check if aireplay is still executing
                     if proc_aireplay.poll() == None:
                         if replaying:
@@ -3610,7 +3616,7 @@ class WEPAttack(Attack):
                             print ', waiting for packet    \r',
                         stdout.flush()
                         continue
-
+                    println_debug("3616")
                     # At this point, aireplay has stopped
                     #exit_code="" if proc_aireplay.poll() != None: proc_aireplay.poll()
                     if attack_num != 1 and attack_num != 2:
@@ -3627,7 +3633,7 @@ class WEPAttack(Attack):
                     if xor_file == '':
                         print '\r %s attack failed: %sunable to generate keystream        %s' % (R + current_hms, O, W)
                         break
-
+                    println_debug("3633")
                     remove_file(self.RUN_CONFIG.temp + 'arp.cap')
                     cmd = ['packetforge-ng',
                            '-0',
@@ -3648,7 +3654,7 @@ class WEPAttack(Attack):
                         print "\r %s attack failed: unable to forget ARP packet               %s" % (
                         R + current_hms + O, W)
                         break
-
+                    println_debug("3654")
                     # We were able to forge a packet, so let's replay it via aireplay-ng
                     cmd = ['aireplay-ng',
                            '--ignore-negative-one',
@@ -3658,7 +3664,7 @@ class WEPAttack(Attack):
                            '-F',  # Select the first packet
                            self.iface.iface]
                     proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
-
+                    println_debug("3664")
                     print '\r %s forged %s! %s...         ' % (
                     GR + current_hms + W, G + 'arp packet' + W, G + 'replaying' + W)
                     replaying = True
@@ -3702,7 +3708,7 @@ class WEPAttack(Attack):
                         remove_airodump_files(self.dump_file_prefix)
                         remove_file(self.key_file)
                         return True
-                    time.sleep(2)
+                    time.sleep(0.5)
 
             # Keyboard interrupt during attack
             except KeyboardInterrupt:
@@ -3830,10 +3836,13 @@ class WEPAttack(Attack):
 
     def count_target_ivs(self,target):
         path=self.RUN_CONFIG.WEP_IVS_DIR
+
         files=glob.glob(path + str(self.target) + "*.csv")
+        println_debug("looking for past ivs from '%s', %d found" % (G + path + str(self.target) + "*.csv" + W, len(files)))
         total_ivs=0
         for f in files:
             total_ivs += self.count_ivs(f)
+            println_debug("file %s has %d ivs" % (G+f+W, self.count_ivs(f)))
         return total_ivs
     def save_wep_packet(self,target, is_ivs, ivs):
         ext='.cap'
