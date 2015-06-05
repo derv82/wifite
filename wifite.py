@@ -203,7 +203,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 99;
+        self.REVISION = 100;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -238,7 +238,7 @@ class RunConfiguration:
             self.WPA_HANDSHAKE_DIR='wpa'
         elif not os.path.exists('wpa'):
             call(['mv',self.WPA_HANDSHAKE_DIR,'wpa'])
-            self.WPA_HANDSHAKE_DIR=add_slash('wpa')
+        self.WPA_HANDSHAKE_DIR=add_slash('wpa')
         
         self.WPA_RECAPTURE_HS=False        
         self.WPA_FINDINGS = []  # List of strings containing info on successful WPA attacks

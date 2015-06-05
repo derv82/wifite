@@ -1,8 +1,12 @@
+# Version 2.0 Rev 100 #
+- One typo fixed
+
 # Version 2.0 Rev 99 #
 ## WPS ##
 - Partially merged the commit from derv82/wifite/commit/30dcc8d99223f8e5faa2f9fa62ab8f392b2d4c67 for WPS pixie dust attack
 - WPS session is now saved by default (use '--wpsnosave' to override)
 - Check the existence of Pixiewps 
+
 ## OTHERS ##
 - MAC address anonymizing is enabled by default (use '--realmac' to override)
 
