@@ -1,3 +1,7 @@
+# Version 2.0 Rev 102 #
+- wifite now prompts for entering targets again if no targets is selected.
+- Minor message tweak
+
 # Version 2.0 Rev 101 #
 - Support to aircrack-ng 1.2-rc2 improved.
 

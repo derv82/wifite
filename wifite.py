@@ -203,7 +203,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 101;
+        self.REVISION = 102;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -752,7 +752,7 @@ class RunConfiguration:
             
             self.WPS_SAVE = not options.wpsnosave
             if not options.wpsnosave:
-                println_info(('WPS %ssession%s file saving ' + G + 'enabled' + W)%(G,W))
+                println_info(('WPS %s.wpc%s file saving ' + G + 'enabled' + W)%(G,W))
 
             if options.wpsratio != None:
                 if options.wpsratio > 0:
@@ -1531,25 +1531,35 @@ class RunEngine:
         targets = sorted(targets, key=lambda t: t.power, reverse=True)
 
         #victims = []
+        victim_must_exist=False
+        
         if self.RUN_CONFIG.SHOW_TARGET != "":
             targets=self.filter_targets(targets,clients,self.RUN_CONFIG.SHOW_TARGET)
         self.print_targets(targets, clients, self.RUN_CONFIG.SCAN_MAX_ROW_SHOW, self.RUN_CONFIG.COLUMN,self.RUN_CONFIG.SPACING)
         if(self.RUN_CONFIG.ATTACK_TARGET == ""):
-            ri = raw_input((GR + "\n [+]" + W + " enter " + G + "target numbers" + W + " (" + G + "1-%s" + W + ")") % (str(len(targets))) + \
-            (" separated by commas, range (e.g.'" + G + "1-2" + W + "'), or wildcards: %s, ") % (G + 'c[num/range]' + W + ' for channel, ' + G + 'p[>=,>,=,<,<=][num]' + W + ' for power, ' + G + 'wep' + W + ', ' + G + 'wep[num of client]' + W + ' or ' + G + 'wep+' + W + " with client, " + G + 'wpa' + W + ' (same syntax as wep), ' + G + 'wps[0,1]' + W + '(0=no, 1=yes), ' + G + 'e[SSID][+]' +W +', ' + G + 'b[BSSID][+]' + W + ' or ' + G + 'all' + W) + \
-            "blank input = " + G + "all" + W + ", add " + G + '-' + W + " before to remove:" )
+            ri = self.get_input(len(targets))
+            victim_must_exist= True
         else:
             ri=self.RUN_CONFIG.ATTACK_TARGET
-        victims=self.filter_targets(targets, clients, ri)
-
-        if len(victims) == 0:
-            println_warning('no targets selected.' + W)
-            self.RUN_CONFIG.exit_gracefully(0)
-
+        
+        while True:
+            victims=self.filter_targets(targets, clients, ri)
+            if len(victims) == 0:
+                println_warning('no targets selected.' + W)
+                if victim_must_exist:
+                    ri=self.get_input(len(targets));
+                else:
+                    self.RUN_CONFIG.exit_gracefully(0)
+            else:
+                break
         print ''
         println_info('%s%d%s target%s selected.' % (G, len(victims), W, '' if len(victims) == 1 else 's'))
 
         return (victims, clients)
+    def get_input(self, max):
+        return raw_input((GR + "\n [+]" + W + " enter " + G + "target numbers" + W + " (" + G + "1-%s" + W + ")") % (str(max)) + \
+            (" separated by commas, range (e.g.'" + G + "1-2" + W + "'), or wildcards: %s, ") % (G + 'c[num/range]' + W + ' for channel, ' + G + 'p[>=,>,=,<,<=][num]' + W + ' for power, ' + G + 'wep' + W + ', ' + G + 'wep[num of client]' + W + ' or ' + G + 'wep+' + W + " with client, " + G + 'wpa' + W + ' (same syntax as wep), ' + G + 'wps[0,1]' + W + '(0=no, 1=yes), ' + G + 'e[SSID][+]' +W +', ' + G + 'b[BSSID][+]' + W + ' or ' + G + 'all' + W) + \
+            "blank input = " + G + "all" + W + ", add " + G + '-' + W + " before to remove:" )
     def deauth(self, target, clients, time_started, iface, wait = False):
         cmd = ['aireplay-ng',
                '--ignore-negative-one',
