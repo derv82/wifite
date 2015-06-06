@@ -1,3 +1,5 @@
 *.csv
 hs/*
 wep/*
+wpa/*
+wps/*

@@ -203,7 +203,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 100;
+        self.REVISION = 101;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -1139,7 +1139,7 @@ class RunEngine:
             if len(line) == 0: continue
             if ord(line[0]) != 32:  # Doesn't start with space
                 iface = line[:line.find(' ')]  # is the interface
-                if line.find('Mode:Monitor') != -1:
+                if line.find('Mode:Monitor') != -1 or re.match(".*wlan\d+mon",line):
                     monitors.append(iface)
                 else:
                     adapters.append(iface)
@@ -1228,6 +1228,7 @@ class RunEngine:
                 # ri = raw_input(" [+] select number of device to put into monitor mode (%s1-%d%s): " % (G, len(monitors), W))
                 # i = int(ri)
                 # iface=monitors[i - 1]
+            
             iface=Interface(iface)
             if not self.RUN_CONFIG.DO_NOT_CHANGE_MAC and not iface.is_monitor_mode():
                 new_mac=iface.random_mac(iface.original_mac)
@@ -1236,13 +1237,18 @@ class RunEngine:
                 iface.set_mac(new_mac)
                 print 'done'
 
-
             if not iface.is_monitor_mode():
                 print_info('enabling monitor mode on %s...' % (G + iface.iface + W))
                 iface=iface.enable_monitor_mode()
+                if iface == False:
+                    print "failed!"
+                    self.RUN_CONFIG.exit_gracefully(1)
+                else:
                 #print iface
-                print 'done'
-
+                    print 'done'
+            else:
+                print_info('interface %s already in monitor mode!\n' % (G + iface.iface + W))
+                
             if self.RUN_CONFIG.TX_POWER > 0:
                 print_info('setting Tx power to %s%s%s...' % (G, self.RUN_CONFIG.TX_POWER, W))
                 iface.set_power(self.RUN_CONFIG.TX_POWER)
@@ -1924,8 +1930,8 @@ class RunEngine:
         
         if len(iface.monitor_mode):
             iface=iface.monitor_mode[0]
-        else:
-            iface=iface
+        #else:
+        #    iface=iface
         #self.RUN_CONFIG.THIS_MAC = get_mac_address(iface)  # Store current MAC address
 
         (targets, clients) = self.scan(iface=iface, channel=self.RUN_CONFIG.TARGET_CHANNEL)
@@ -2378,7 +2384,7 @@ class Interface:
         self.monitor_mode=[]
 
     def is_monitor_mode(self):
-        return re.match("^(phy\d+\s+)?mon\d+$",self.iface) != None
+        return re.match("^(wlan\d+mon|mon\d+)$",self.iface) != None
     #def check_mode(self):
     #    if self.monitor 
     def rtl8187_fix(self):
@@ -2459,29 +2465,24 @@ class Interface:
             return 
         return True
     def enable_monitor_mode(self):   #enable_monitor_mode
-        #if self.monitor_mode== True:
-        #    return
         iface=self.iface
-        if re.match("^mon\d+$",self.iface):
+        if re.match("^mon\d+$",self.iface) or re.match("^wlan\d+mon$",self.iface) :
             return self
         
-        #print_info('enabling monitor mode on %s...' % (G + iface + W))
-        #name=self.enable_monitor_mode()
         proc=Popen(['airmon-ng', 'start', iface], stdout=PIPE, stderr=DN)
-        #print iface
         proc.wait()
         last_line=""
         
         for line in proc.communicate()[0].split('\n'):
-            if re.match(".*\(monitor mode enabled on ([^\)]+)\).*",line):
+            if re.match(".*\(monitor mode enabled on ([^\)]+)\).*",line) or re.match(".*monitor mode vif enabled for \[phy\d+\]wlan\d+ on \[phy\d+\](.*)\)",line):
                 matches=re.match(".*\(monitor mode enabled on ([^\)]+)\).*",line)
+                if matches == None: 
+                    matches=re.match(".*monitor mode vif enabled for \[phy\d+\]wlan\d+ on \[phy\d+\](.*)\)",line)
                 results=matches.groups()
-                print 'done'
                 mon=Interface(results[0])
                 self.monitor_mode.append(mon)
                 return mon
-
-
+            
         #print 'done'
         #self.RUN_CONFIG.WIRELESS_IFACE = ''  # remove this reference as we've started its monitoring counterpart
         #self.RUN_CONFIG.IFACE_TO_TAKE_DOWN = self.get_iface()

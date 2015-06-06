@@ -1,3 +1,6 @@
+# Version 2.0 Rev 101 #
+- Support to aircrack-ng 1.2-rc2 improved.
+
 # Version 2.0 Rev 100 #
 - One typo fixed
 
