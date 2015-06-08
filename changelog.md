@@ -1,3 +1,17 @@
+# Version 2.0 Rev 103 #
+## WPA ##
+- One minor bug in strip_handshake function fixed 
+
+## WPS ##
+- Rewrote part of Pixie-Dust function (*May have bugs)
+- wash 1.5.2 is now supported
+- Filter keywords "wps1" now means "targets with WPS enabled except locked", "wps2" means "targets with WPS enabled includes locked"
+
+## OTHERS ##
+- Column width tuned
+- WPS locked router is shown as "lock" instead of "yes" in "WPS" column when scanning state
+- "--save" switch saves the cap file too (For checking WPS compability).
+
 # Version 2.0 Rev 102 #
 - wifite now prompts for entering targets again if no targets is selected.
 - Minor message tweak
