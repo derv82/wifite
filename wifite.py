@@ -391,10 +391,10 @@ class RunConfiguration:
                 self.DO_NOT_CHANGE_MAC = False
             if options.interface:
                 self.WIRELESS_IFACE = options.interface
-                print GR + ' [+]' + W + ' set interface :%s' % (G + self.WIRELESS_IFACE + W)
+                print GR + ' [+]' + W + ' set interface: %s' % (G + self.WIRELESS_IFACE + W)
             if options.monitor_interface:
                 self.MONITOR_IFACE = options.monitor_interface
-                print GR + ' [+]' + W + ' set interface already in monitor mode :%s' % (G + self.MONITOR_IFACE + W)
+                print GR + ' [+]' + W + ' set interface already in monitor mode: %s' % (G + self.MONITOR_IFACE + W)
             if options.nodeauth:
                 self.SEND_DEAUTHS = False
                 print GR + ' [+]' + W + ' will not deauthenticate clients while scanning%s' % W
@@ -888,6 +888,7 @@ class RunEngine:
         mac_anonymize(iface)
         print GR + ' [+]' + W + ' enabling monitor mode on %s...' % (G + iface + W),
         stdout.flush()
+        call(['airmon-ng', 'check', 'kill'], stdout=DN, stderr=DN)
         call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
         print 'done'
         self.RUN_CONFIG.WIRELESS_IFACE = ''  # remove this reference as we've started its monitoring counterpart
@@ -980,9 +981,13 @@ class RunEngine:
             if ord(line[0]) != 32:  # Doesn't start with space
                 iface = line[:line.find(' ')]  # is the interface
             if line.find('Mode:Monitor') != -1:
-                monitors.append(iface)
+                if iface not in monitors:
+                    #print GR + ' [+] found monitor inferface: ' + iface
+                    monitors.append(iface)
             else:
-                adapters.append(iface)
+                if iface not in adapters:
+                    #print GR + ' [+] found wireless inferface: ' + iface
+                    adapters.append(iface)
 
         if self.RUN_CONFIG.WIRELESS_IFACE != '':
             if monitors.count(self.RUN_CONFIG.WIRELESS_IFACE):
@@ -1016,6 +1021,7 @@ class RunEngine:
         proc = Popen(['airmon-ng'], stdout=PIPE, stderr=DN)
         for line in proc.communicate()[0].split('\n'):
             if len(line) == 0 or line.startswith('Interface') or line.startswith('PHY'): continue
+            if line.startswith('phy'): line = line.split('\t', 1)[1]
             monitors.append(line)
 
         if len(monitors) == 0:
@@ -1025,7 +1031,6 @@ class RunEngine:
         elif self.RUN_CONFIG.WIRELESS_IFACE != '' and monitors.count(self.RUN_CONFIG.WIRELESS_IFACE) > 0:
             monitor = monitors[0][:monitors[0].find('\t')]
             return self.enable_monitor_mode(monitor)
-
         elif len(monitors) == 1:
             monitor = monitors[0][:monitors[0].find('\t')]
             if monitor.startswith('phy'): monitor = monitors[0].split()[1]
