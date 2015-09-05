@@ -2224,7 +2224,7 @@ class WPAAttack(Attack):
                     # Send deauth packets via aireplay-ng
                     cmd = ['aireplay-ng',
                            '--ignore-negative-one',
-                           '-0',  # Attack method (Deauthentication)
+                           '--deauth',
                            str(self.RUN_CONFIG.WPA_DEAUTH_COUNT),  # Number of packets to send
                            '-a', self.target.bssid]
 
@@ -2240,7 +2240,7 @@ class WPAAttack(Attack):
                               (GR + sec_to_hms(self.RUN_CONFIG.WPA_ATTACK_TIMEOUT - seconds_running) + W, \
                                G + str(self.RUN_CONFIG.WPA_DEAUTH_COUNT) + W, \
                                G + target_clients[client_index].bssid + W),
-                        cmd.append('-h')
+                        cmd.append('-c')
                         cmd.append(target_clients[client_index].bssid)
                     cmd.append(self.iface)
                     stdout.flush()
@@ -3205,7 +3205,7 @@ class WEPAttack(Attack):
                    '--ignore-negative-one',
                    '--deauth', str(self.RUN_CONFIG.WPA_DEAUTH_COUNT),
                    '-a', target.bssid,
-                   '-h', client.bssid,
+                   '-c', client.bssid,
                    iface]
             call(cmd, stdout=DN, stderr=DN)
 
