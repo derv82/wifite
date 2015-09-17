@@ -2340,7 +2340,7 @@ class WPAAttack(Attack):
             # Call Tshark to return list of EAPOL packets in cap file.
             cmd = ['tshark',
                    '-r', capfile,  # Input file
-                   '-R', 'eapol',  # Filter (only EAPOL packets)
+                   '-Y', 'eapol',  # Filter (only EAPOL packets)
                    '-n']  # Do not resolve names (MAC vendors)
             proc = Popen(cmd, stdout=PIPE, stderr=DN)
             proc.wait()
