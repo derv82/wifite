@@ -238,6 +238,7 @@ class RunConfiguration:
         self.CRACKED_TARGETS = []  # List of targets we have already cracked
         self.ATTACK_ALL_TARGETS = False  # Flag for when we want to attack *everyone*
         self.ATTACK_MIN_POWER = 0  # Minimum power (dB) for access point to be considered a target
+        self.ATTACK_MIN_CLIENTS = 0  # Minimum client count to target
         self.VERBOSE_APS = True  # Print access points as they appear
         self.CRACKED_TARGETS = self.load_cracked()
         old_cracked = self.load_old_cracked()
@@ -427,6 +428,15 @@ class RunConfiguration:
                     print R + ' [!]' + O + ' no power level given!' + W
                 else:
                     print GR + ' [+]' + W + ' minimum target power set to %s' % (G + str(self.ATTACK_MIN_POWER) + W)
+            if options.clients:
+                try:
+                    self.ATTACK_MIN_CLIENTS = int(options.clients)
+                except ValueError:
+                    print R + ' [!]' + O + ' invalid client count: %s' % (R + options.clients + W)
+                except IndexError:
+                    print R + ' [!]' + O + ' no client count given!' + W
+                else:
+                    print GR + ' [+]' + W + ' minimum client count set to %s' % (G + str(self.ATTACK_MIN_CLIENTS) + W)
             if options.tx:
                 try:
                     self.TX_POWER = int(options.tx)
@@ -666,6 +676,9 @@ class RunConfiguration:
         global_group.add_argument('--power', help='Attacks any targets with signal strength > [pow].', action='store',
                                   dest='power')
         global_group.add_argument('-power', help=argparse.SUPPRESS, action='store', dest='power')
+        global_group.add_argument('--clients', help='Attacks any targets with clients > [count].', action='store',
+                                  dest='clients')
+        global_group.add_argument('-clients', help=argparse.SUPPRESS, action='store', dest='clients')
         global_group.add_argument('--tx', help='Set adapter TX power level.', action='store', dest='tx')
         global_group.add_argument('-tx', help=argparse.SUPPRESS, action='store', dest='tx')
         global_group.add_argument('--quiet', help='Do not print list of APs during scan.', action='store_true',
@@ -1087,6 +1100,10 @@ class RunEngine:
                     self.RUN_CONFIG.exit_gracefully(1)
 
                 (targets, clients) = self.parse_csv(self.RUN_CONFIG.temp + 'wifite-01.csv')
+                client_counts = {}
+                for client in clients:
+                    client_counts.setdefault(client.station, 0)
+                    client_counts[client.station] += 1
 
                 # Remove any already cracked networks if configured to do so
                 if self.RUN_CONFIG.SHOW_ALREADY_CRACKED == False:
@@ -1149,6 +1166,20 @@ class RunEngine:
                     print GR + '\n [+]' + W + ' removed %s targets with power < %ddB, %s remain' % \
                                               (G + str(before_count - len(targets)) + W,
                                                self.RUN_CONFIG.ATTACK_MIN_POWER, G + str(len(targets)) + W)
+                    stop_scanning = True
+
+                if self.RUN_CONFIG.ATTACK_MIN_CLIENTS > 0 and time.time() - time_started > 10:
+                    # Remove targets with clients < threshold
+                    i = 0
+                    before_count = len(targets)
+                    while i < len(targets):
+                        if client_counts.get(targets[i].bssid, 0) < self.RUN_CONFIG.ATTACK_MIN_CLIENTS:
+                            targets.pop(i)
+                        else:
+                            i += 1
+                    print GR + '\n [+]' + W + ' removed %s targets with clients < %d, %s remain' % \
+                                              (G + str(before_count - len(targets)) + W,
+                                               self.RUN_CONFIG.ATTACK_MIN_CLIENTS, G + str(len(targets)) + W)
                     stop_scanning = True
 
                 if stop_scanning: break
@@ -1231,15 +1262,11 @@ class RunEngine:
                         else:
                             print "  %3s" % (G + 'wps' + W if target.wps else R + ' no' + W),
                         # Clients
-                        client_text = ''
-                        for c in clients:
-                            if c.station == target.bssid:
-                                if client_text == '':
-                                    client_text = 'client'
-                                elif client_text[-1] != "s":
-                                    client_text += "s"
-                        if client_text != '':
-                            print '  %s' % (G + client_text + W)
+                        count = client_counts.get(target.bssid, 0)
+                        if count > 1:
+                            print '  %s' % (G + 'clients' + W)
+                        elif count:
+                            print '  %s' % (G + 'client' + W)
                         else:
                             print ''
                     print ''
