@@ -1800,11 +1800,6 @@ def get_revision():
 ######################
 # SCANNING FUNCTIONS #
 ######################
-
-
-
-
-
 def wps_check_targets(targets, cap_file, verbose=True):
     """
         Uses reaver's "walsh" (or wash) program to check access points in cap_file
