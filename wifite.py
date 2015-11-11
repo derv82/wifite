@@ -73,11 +73,11 @@
 # LIBRARIES #
 #############
 
-import csv  # Exporting and importing cracked aps
-import os  # File management
-import time  # Measuring attack intervals
+import csv     # Exporting and importing cracked aps
+import os      # File management
+import time    # Measuring attack intervals
 import random  # Generating a random MAC address.
-import errno  # Error numbers
+import errno   # Error numbers
 
 from sys import argv  # Command-line arguments
 from sys import stdout  # Flushing
@@ -112,6 +112,9 @@ GR = '\033[37m'  # gray
 DN     = open(os.devnull, 'w')
 ERRLOG = open(os.devnull, 'w')
 OUTLOG = open(os.devnull, 'w')
+
+# Hashcat support
+HASHCAT_PATH = '/media/dudu/t3r4/GPUcracking/oclHashcat-1.37/'   # CHANGE_ME
 
 ###################
 # DATA STRUCTURES #
@@ -162,10 +165,10 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 87;
-        self.PRINTED_SCANNING = False
+        self.REVISION            = 87
+        self.PRINTED_SCANNING    = False
 
-        self.TX_POWER = 0  # Transmit power for wireless interface, 0 uses default power
+        self.TX_POWER            = 0  # Transmit power for wireless interface, 0 uses default power
 
         # WPA variables
         self.WPA_DISABLE         = False  # Flag to skip WPA handshake capture
@@ -192,6 +195,7 @@ class RunConfiguration:
         # Not finding handshake short circuits result (ALL 'True' programs must find handshake)
         self.WPA_HANDSHAKE_TSHARK   = True  # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
         self.WPA_HANDSHAKE_PYRIT    = False  # Sometimes crashes on incomplete dumps, but accurate.
+        self.WPA_HANDSHAKE_HASHCAT  = False
         self.WPA_HANDSHAKE_AIRCRACK = True  # Not 100% accurate, but fast.
         self.WPA_HANDSHAKE_COWPATTY = False  # Uses more lenient "nonstrict mode" (-2)
 
@@ -304,7 +308,7 @@ class RunConfiguration:
         result = []
         if not os.path.exists('cracked.txt'):
             return result
-        fin = open('cracked.txt', 'r')
+        fin   = open('cracked.txt', 'r')
         lines = fin.read().split('\n')
         fin.close()
 
@@ -517,6 +521,9 @@ class RunConfiguration:
             if options.pyrit:
                 self.WPA_HANDSHAKE_PYRIT = True
                 print GR + ' [+]' + W + ' pyrit handshake verification ' + G + 'enabled' + W
+            if options.hashcat:
+                self.WPA_HANDSHAKE_HASHCAT = True
+                print GR + ' [+]' + W + ' hashcat handshake verification ' + G + 'enabled' + W                
             if options.aircrack:
                 self.WPA_HANDSHAKE_AIRCRACK = True
                 print GR + ' [+]' + W + ' aircrack handshake verification ' + G + 'enabled' + W
@@ -700,6 +707,9 @@ class RunConfiguration:
         wpa_group.add_argument('--pyrit', help='Verify handshake using pyrit.', default=False, action='store_true',
                                dest='pyrit')
         wpa_group.add_argument('-pyrit', help=argparse.SUPPRESS, default=False, action='store_true', dest='pyrit')
+        wpa_group.add_argument('--hashcat', help='Verify handshake using hashcat.', default=False, action='store_true',
+                               dest='hashcat')
+        wpa_group.add_argument('-hashcat', help=argparse.SUPPRESS, default=False, action='store_true', dest='hashcat')        
         wpa_group.add_argument('--tshark', help='Verify handshake using tshark.', default=False, action='store_true',
                                dest='tshark')
         wpa_group.add_argument('-tshark', help=argparse.SUPPRESS, default=False, action='store_true', dest='tshark')
@@ -832,7 +842,7 @@ class RunConfiguration:
         except KeyboardInterrupt:
             print R + '\n (^C)' + O + ' wifite upgrade interrupted' + W
         self.exit_gracefully(0)
-
+ 
 
 class RunEngine:
     def __init__(self, run_config):
@@ -869,7 +879,7 @@ class RunEngine:
             print R + ' [!]' + O + ' please re-install reaver or install walsh/wash separately' + W
 
         # Check handshake-checking apps
-        recs = ['tshark', 'pyrit', 'cowpatty']
+        recs = ['tshark', 'pyrit', 'cowpatty', 'hashcat']
         for rec in recs:
             if program_exists(rec): continue
             printed = True
@@ -1883,8 +1893,24 @@ def remove_file(filename):
         os.remove(filename)
     except OSError:
         pass
+    
 
+def arch32or64bits():
+    """
+        Function returns a string ('32' or '64') with the OS arch
+        Otherwise stops the program
+    """
+    import platform
+    
+    arch = platform.architecture()[0][0:2]
+    if arch != '32' or arch != '64':
+        print R + ' [!]' + O + ' No architecture detected'
+        print GR + " [+]" + W + " quitting"  # wifite will now exit"
+        exit(0)
+    else:
+        return arch 
 
+  
 def program_exists(program):
     """
         Uses 'which' (linux command) to check if a program is installed.
@@ -2474,6 +2500,40 @@ class WPAAttack(Attack):
                                               line.find(', workable, ') != -1):
                     return True
         return False
+    
+    def has_handshake_hashcat(self, target, capfile):
+        """
+            Uses the "aircrack-ng -J" hashcat option  to check for a handshake.
+            Returns "True" if handshake is found, false otherwise.
+        """
+        #TODO check arch x86 or x64 and if PATH ends with /
+        arch = arch32or64bits()        
+        if not os.path.exists(HASHCAT_PATH + 'oclHashcat'+arch+'.bin'):
+            return False 
+        if not program_exists('aircrack-ng'): return False
+
+        # Attempt to convert a cap file to hccap
+        cmd = ['aircrack-ng',
+               '--bssid'    ,target.bssid,
+                ' '         , capfile,
+               '-J'         , "wpa-01.hccap"]  # TODO!!
+        proc = Popen(cmd, stdout=PIPE, stderr=DN)
+        proc.wait()
+        hit_essid = False
+        for line in proc.communicate()[0].split('\n'):
+            # Iterate over every line of output by aircrack
+            if line == '' or line == None: continue
+            if line.find("AccessPoint") != -1:
+                hit_essid = (line.find("('" + target.ssid + "')") != -1) and \
+                            (line.lower().find(target.bssid.lower()) != -1)
+                #hit_essid = (line.lower().find(target.bssid.lower()))
+
+            else:
+                # If "aircrack-ng -J" says it's good or workable, it's a valid handshake.
+                if hit_essid and (line.find(', good, ') != -1 or \
+                                              line.find(', workable, ') != -1):
+                    return True
+        return False    
 
     def has_handshake_aircrack(self, target, capfile):
         """
