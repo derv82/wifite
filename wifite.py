@@ -1,14 +1,13 @@
 #!/usr/bin/python
-import cmd
-
 # -*- coding: utf-8 -*-
 
 """
     wifite
 
     author: derv82 at gmail
-    author: bwall @botnet_hunter (ballastsec@gmail.com)
-    author: drone @dronesec (ballastsec@gmail.com)
+    author: bwall             @botnet_hunter     (ballastsec@gmail.com)
+    author: drone             @dronesec          (ballastsec@gmail.com)
+    author: Eduardo Novella   @enovella_         (ednolo@inf.upv.es)
 
     Thanks to everyone that contributed to this project.
     If you helped in the past and want your name here, shoot me an email
@@ -80,6 +79,7 @@ import time    # Measuring attack intervals
 import random  # Generating a random MAC address.
 import errno   # Error numbers
 
+# TODO remove argv?
 from sys import argv  # Command-line arguments
 from sys import stdout  # Flushing
 
@@ -126,7 +126,6 @@ class CapFile:
     """
         Holds data about an access point's .cap file, including AP's ESSID & BSSID.
     """
-
     def __init__(self, filename, ssid, bssid):
         self.filename = filename
         self.ssid     = ssid
@@ -137,7 +136,6 @@ class Target:
     """
         Holds data for a Target (aka Access Point aka Router)
     """
-
     def __init__(self, bssid, power, data, channel, encryption, ssid):
         self.bssid      = bssid
         self.power      = power
@@ -153,7 +151,6 @@ class Client:
     """
         Holds data for a Client (device connected to Access Point/Router)
     """
-
     def __init__(self, bssid, station, power):
         self.bssid   = bssid
         self.station = station
@@ -164,7 +161,6 @@ class RunConfiguration:
     """
         Configuration for this rounds of attacks
     """
-
     def __init__(self):
         self.REVISION            = 87
         self.PRINTED_SCANNING    = False
@@ -1726,72 +1722,72 @@ def get_revision():
     return irev
 
 
-def help():
-    """
-        Prints help screen
-    """
-    
-    head = W
-    sw   = G
-    var  = GR
-    des  = W
-    de   = G
-
-    print head + '   COMMANDS' + W
-    print sw + '\t-check ' + var + '<file>\t' + des + 'check capfile ' + var + '<file>' + des + ' for handshakes.' + W
-    print sw + '\t-cracked    \t' + des + 'display previously-cracked access points' + W
-    print sw + '\t-recrack    \t' + des + 'allow recracking of previously cracked access points' + W
-    print ''
-
-    print head + '   GLOBAL' + W
-    print sw + '\t-all         \t' + des + 'attack all targets.              ' + de + '[off]' + W
-    #print sw+'\t-pillage     \t'+des+'attack all targets in a looping fashion.'+de+'[off]'+W
-    print sw + '\t-i ' + var + '<iface>  \t' + des + 'wireless interface for capturing ' + de + '[auto]' + W
-    print sw + '\t-mon-iface ' + var + '<monitor_interface>  \t' + des + 'interface in monitor mode for capturing ' + de + '[auto]' + W
-    print sw + '\t-mac         \t' + des + 'anonymize mac address            ' + de + '[off]' + W
-    print sw + '\t-c ' + var + '<channel>\t' + des + 'channel to scan for targets      ' + de + '[auto]' + W
-    print sw + '\t-e ' + var + '<essid>  \t' + des + 'target a specific access point by ssid (name)  ' + de + '[ask]' + W
-    print sw + '\t-b ' + var + '<bssid>  \t' + des + 'target a specific access point by bssid (mac)  ' + de + '[auto]' + W
-    print sw + '\t-showb       \t' + des + 'display target BSSIDs after scan               ' + de + '[off]' + W
-    print sw + '\t-pow ' + var + '<db>   \t' + des + 'attacks any targets with signal strenghth > ' + var + 'db ' + de + '[0]' + W
-    print sw + '\t-quiet       \t' + des + 'do not print list of APs during scan           ' + de + '[off]' + W
-    print ''
-
-    print head + '\n   WPA' + W
-    print sw + '\t-wpa        \t' + des + 'only target WPA networks (works with -wps -wep)   ' + de + '[off]' + W
-    print sw + '\t-wpat ' + var + '<sec>   \t' + des + 'time to wait for WPA attack to complete (seconds) ' + de + '[500]' + W
-    print sw + '\t-wpadt ' + var + '<sec>  \t' + des + 'time to wait between sending deauth packets (sec) ' + de + '[10]' + W
-    print sw + '\t-strip      \t' + des + 'strip handshake using tshark or pyrit             ' + de + '[off]' + W
-    print sw + '\t-crack ' + var + '<dic>\t' + des + 'crack WPA handshakes using ' + var + '<dic>' + des + ' wordlist file    ' + de + '[off]' + W
-    print sw + '\t-dict ' + var + '<file>\t' + des + 'specify dictionary to use when cracking WPA ' + de + '[phpbb.txt]' + W
-    print sw + '\t-aircrack   \t' + des + 'verify handshake using aircrack ' + de + '[on]' + W
-    print sw + '\t-pyrit      \t' + des + 'verify handshake using pyrit    ' + de + '[off]' + W
-    print sw + '\t-tshark     \t' + des + 'verify handshake using tshark   ' + de + '[on]' + W
-    print sw + '\t-cowpatty   \t' + des + 'verify handshake using cowpatty ' + de + '[off]' + W
-
-    print head + '\n   WEP' + W
-    print sw + '\t-wep        \t' + des + 'only target WEP networks ' + de + '[off]' + W
-    print sw + '\t-pps ' + var + '<num>  \t' + des + 'set the number of packets per second to inject ' + de + '[600]' + W
-    print sw + '\t-wept ' + var + '<sec> \t' + des + 'sec to wait for each attack, 0 implies endless ' + de + '[600]' + W
-    print sw + '\t-chopchop   \t' + des + 'use chopchop attack      ' + de + '[on]' + W
-    print sw + '\t-arpreplay  \t' + des + 'use arpreplay attack     ' + de + '[on]' + W
-    print sw + '\t-fragment   \t' + des + 'use fragmentation attack ' + de + '[on]' + W
-    print sw + '\t-caffelatte \t' + des + 'use caffe-latte attack   ' + de + '[on]' + W
-    print sw + '\t-p0841      \t' + des + 'use -p0841 attack        ' + de + '[on]' + W
-    print sw + '\t-hirte      \t' + des + 'use hirte (cfrag) attack ' + de + '[on]' + W
-    print sw + '\t-nofakeauth \t' + des + 'stop attack if fake authentication fails    ' + de + '[off]' + W
-    print sw + '\t-wepca ' + GR + '<n>  \t' + des + 'start cracking when number of ivs surpass n ' + de + '[10000]' + W
-    print sw + '\t-wepsave    \t' + des + 'save a copy of .cap files to this directory ' + de + '[off]' + W
-
-    print head + '\n   WPS' + W
-    print sw + '\t-wps       \t' + des + 'only target WPS networks         ' + de + '[off]' + W
-    print sw + '\t-wpst ' + var + '<sec>  \t' + des + 'max wait for new retry before giving up (0: never)  ' + de + '[660]' + W
-    print sw + '\t-wpsratio ' + var + '<per>\t' + des + 'min ratio of successful PIN attempts/total tries    ' + de + '[0]' + W
-    print sw + '\t-wpsretry ' + var + '<num>\t' + des + 'max number of retries for same PIN before giving up ' + de + '[0]' + W
-
-    print head + '\n   EXAMPLE' + W
-    print sw + '\t./wifite.py ' + W + '-wps -wep -c 6 -pps 600' + W
-    print ''
+# def help():
+#     """
+#         Prints help screen
+#     """
+#     
+#     head = W
+#     sw   = G
+#     var  = GR
+#     des  = W
+#     de   = G
+# 
+#     print head + '   COMMANDS' + W
+#     print sw + '\t-check ' + var + '<file>\t' + des + 'check capfile ' + var + '<file>' + des + ' for handshakes.' + W
+#     print sw + '\t-cracked    \t' + des + 'display previously-cracked access points' + W
+#     print sw + '\t-recrack    \t' + des + 'allow recracking of previously cracked access points' + W
+#     print ''
+# 
+#     print head + '   GLOBAL' + W
+#     print sw + '\t-all         \t' + des + 'attack all targets.              ' + de + '[off]' + W
+#     #print sw+'\t-pillage     \t'+des+'attack all targets in a looping fashion.'+de+'[off]'+W
+#     print sw + '\t-i ' + var + '<iface>  \t' + des + 'wireless interface for capturing ' + de + '[auto]' + W
+#     print sw + '\t-mon-iface ' + var + '<monitor_interface>  \t' + des + 'interface in monitor mode for capturing ' + de + '[auto]' + W
+#     print sw + '\t-mac         \t' + des + 'anonymize mac address            ' + de + '[off]' + W
+#     print sw + '\t-c ' + var + '<channel>\t' + des + 'channel to scan for targets      ' + de + '[auto]' + W
+#     print sw + '\t-e ' + var + '<essid>  \t' + des + 'target a specific access point by ssid (name)  ' + de + '[ask]' + W
+#     print sw + '\t-b ' + var + '<bssid>  \t' + des + 'target a specific access point by bssid (mac)  ' + de + '[auto]' + W
+#     print sw + '\t-showb       \t' + des + 'display target BSSIDs after scan               ' + de + '[off]' + W
+#     print sw + '\t-pow ' + var + '<db>   \t' + des + 'attacks any targets with signal strenghth > ' + var + 'db ' + de + '[0]' + W
+#     print sw + '\t-quiet       \t' + des + 'do not print list of APs during scan           ' + de + '[off]' + W
+#     print ''
+# 
+#     print head + '\n   WPA' + W
+#     print sw + '\t-wpa        \t' + des + 'only target WPA networks (works with -wps -wep)   ' + de + '[off]' + W
+#     print sw + '\t-wpat ' + var + '<sec>   \t' + des + 'time to wait for WPA attack to complete (seconds) ' + de + '[500]' + W
+#     print sw + '\t-wpadt ' + var + '<sec>  \t' + des + 'time to wait between sending deauth packets (sec) ' + de + '[10]' + W
+#     print sw + '\t-strip      \t' + des + 'strip handshake using tshark or pyrit             ' + de + '[off]' + W
+#     print sw + '\t-crack ' + var + '<dic>\t' + des + 'crack WPA handshakes using ' + var + '<dic>' + des + ' wordlist file    ' + de + '[off]' + W
+#     print sw + '\t-dict ' + var + '<file>\t' + des + 'specify dictionary to use when cracking WPA ' + de + '[phpbb.txt]' + W
+#     print sw + '\t-aircrack   \t' + des + 'verify handshake using aircrack ' + de + '[on]' + W
+#     print sw + '\t-pyrit      \t' + des + 'verify handshake using pyrit    ' + de + '[off]' + W
+#     print sw + '\t-tshark     \t' + des + 'verify handshake using tshark   ' + de + '[on]' + W
+#     print sw + '\t-cowpatty   \t' + des + 'verify handshake using cowpatty ' + de + '[off]' + W
+# 
+#     print head + '\n   WEP' + W
+#     print sw + '\t-wep        \t' + des + 'only target WEP networks ' + de + '[off]' + W
+#     print sw + '\t-pps ' + var + '<num>  \t' + des + 'set the number of packets per second to inject ' + de + '[600]' + W
+#     print sw + '\t-wept ' + var + '<sec> \t' + des + 'sec to wait for each attack, 0 implies endless ' + de + '[600]' + W
+#     print sw + '\t-chopchop   \t' + des + 'use chopchop attack      ' + de + '[on]' + W
+#     print sw + '\t-arpreplay  \t' + des + 'use arpreplay attack     ' + de + '[on]' + W
+#     print sw + '\t-fragment   \t' + des + 'use fragmentation attack ' + de + '[on]' + W
+#     print sw + '\t-caffelatte \t' + des + 'use caffe-latte attack   ' + de + '[on]' + W
+#     print sw + '\t-p0841      \t' + des + 'use -p0841 attack        ' + de + '[on]' + W
+#     print sw + '\t-hirte      \t' + des + 'use hirte (cfrag) attack ' + de + '[on]' + W
+#     print sw + '\t-nofakeauth \t' + des + 'stop attack if fake authentication fails    ' + de + '[off]' + W
+#     print sw + '\t-wepca ' + GR + '<n>  \t' + des + 'start cracking when number of ivs surpass n ' + de + '[10000]' + W
+#     print sw + '\t-wepsave    \t' + des + 'save a copy of .cap files to this directory ' + de + '[off]' + W
+# 
+#     print head + '\n   WPS' + W
+#     print sw + '\t-wps       \t' + des + 'only target WPS networks         ' + de + '[off]' + W
+#     print sw + '\t-wpst ' + var + '<sec>  \t' + des + 'max wait for new retry before giving up (0: never)  ' + de + '[660]' + W
+#     print sw + '\t-wpsratio ' + var + '<per>\t' + des + 'min ratio of successful PIN attempts/total tries    ' + de + '[0]' + W
+#     print sw + '\t-wpsretry ' + var + '<num>\t' + des + 'max number of retries for same PIN before giving up ' + de + '[0]' + W
+# 
+#     print head + '\n   EXAMPLE' + W
+#     print sw + '\t./wifite.py ' + W + '-wps -wep -c 6 -pps 600' + W
+#     print ''
 
 
 ###########################
