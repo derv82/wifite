@@ -474,12 +474,11 @@ class RunConfiguration:
                 print ''
                 self.exit_gracefully(0)
             # WPA
-            if not set_hscheck and (options.tshark or options.cowpatty or options.aircrack or options.pyrit or options.hashcat):
+            if not set_hscheck and (options.tshark or options.cowpatty or options.aircrack or options.pyrit):
                 self.WPA_HANDSHAKE_TSHARK   = False
                 self.WPA_HANDSHAKE_PYRIT    = False
                 self.WPA_HANDSHAKE_COWPATTY = False
                 self.WPA_HANDSHAKE_AIRCRACK = False
-                self.WPA_HANDSHAKE_HASHCAT  = False
                 set_hscheck                 = True
             if options.strip:
                 self.WPA_STRIP_HANDSHAKE = True
@@ -523,10 +522,7 @@ class RunConfiguration:
                 print GR + ' [+]' + W + ' tshark handshake verification ' + G + 'enabled' + W
             if options.pyrit:
                 self.WPA_HANDSHAKE_PYRIT = True
-                print GR + ' [+]' + W + ' pyrit handshake verification ' + G + 'enabled' + W
-            if options.hashcat:
-                self.WPA_HANDSHAKE_HASHCAT = True
-                print GR + ' [+]' + W + ' hashcat handshake verification ' + G + 'enabled' + W                
+                print GR + ' [+]' + W + ' pyrit handshake verification ' + G + 'enabled' + W             
             if options.aircrack:
                 self.WPA_HANDSHAKE_AIRCRACK = True
                 print GR + ' [+]' + W + ' aircrack handshake verification ' + G + 'enabled' + W
@@ -701,9 +697,16 @@ class RunConfiguration:
         wpa_group.add_argument('--crack', help='Crack WPA handshakes using [dic] wordlist file.', action='store_true',
                                dest='crack')
         wpa_group.add_argument('-crack', help=argparse.SUPPRESS, action='store_true', dest='crack')
-        wpa_group.add_argument('--hashcat', help='Crack WPA handshakes using using hashcat and [dic] wordlist file', default=False, action='store_true',
-                               dest='hashcat')
-        wpa_group.add_argument('-hashcat', help=argparse.SUPPRESS, default=False, action='store_true', dest='hashcat')          
+        wpa_group.add_argument('--hashcat-gpu', help='Crack WPA handshakes using oclHashcat and wordlists.', default=False, action='store_true',
+                               dest='hashcat-gpu')
+        wpa_group.add_argument('-hashcat-gpu', help=argparse.SUPPRESS, default=False, action='store_true', dest='hashcat-gpu')  
+        wpa_group.add_argument('--hashcat-gpu-full', help='Crack WPA handshakes using oclHashcat and combined attacks such as \
+                                                           rules, masks and hybrids.', default=False, action='store_true',
+                               dest='hashcat-gpu-full')
+        wpa_group.add_argument('-hashcat-gpu-full', help=argparse.SUPPRESS, default=False, action='store_true', dest='hashcat-gpu-full')  
+        wpa_group.add_argument('--hashcat-test', help='Verify oclHashcat and graphic drivers.', default=False, action='store_true',
+                               dest='hashcat-test')
+        wpa_group.add_argument('-hashcat-test', help=argparse.SUPPRESS, default=False, action='store_true', dest='hashcat-test')                        
         wpa_group.add_argument('--dict', help='Specificy dictionary to use when cracking WPA.', action='store',
                                dest='dic')
         wpa_group.add_argument('-dict', help=argparse.SUPPRESS, action='store', dest='dic')
@@ -2547,11 +2550,6 @@ class WPAAttack(Attack):
         if valid_handshake and self.RUN_CONFIG.WPA_HANDSHAKE_PYRIT:
             tried = True
             valid_handshake = self.has_handshake_pyrit(target, capfile)
-            
-        # Check for handshake using hashcat if applicable
-        if valid_handshake and self.RUN_CONFIG.WPA_HANDSHAKE_HASHCAT:
-            tried = True
-            valid_handshake = self.has_handshake_hashcat(target, capfile)
 
         # Check for handshake using aircrack-ng
         if valid_handshake and self.RUN_CONFIG.WPA_HANDSHAKE_AIRCRACK:
@@ -2596,7 +2594,7 @@ class WPAAttack(Attack):
 def wpa_crack(capfile, RUN_CONFIG):
     """
         Cracks cap file using aircrack-ng
-        This is crude and slow. If people want to crack using pyrit or cowpatty or oclhashcat,
+        This is crude and slow. If people want to crack using pyrit or cowpatty 
         they can do so manually.
     """
     if RUN_CONFIG.WPA_DICTIONARY == '':
