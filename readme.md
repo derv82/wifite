@@ -15,7 +15,7 @@ Other changes include a complete code re-write with bug fixes and added stabilit
 About
 -----
 
-_Wifite is for Linux only._
+_Wifite is only for Linux._
 
 Wifite was designed for use with pentesting distributions of Linux, such as [Kali Linux](http://www.kali.org/), [Pentoo](http://www.pentoo.ch/), [BackBox](http://www.backbox.org); any Linux distributions with wireless drivers patched for injection. The script appears to also operate with Ubuntu 11/10, Debian 6, and Fedora 16.
 
@@ -24,15 +24,23 @@ Wifite must be run as __root__. This is required by the suite of programs it use
 Wifite assumes that you have a wireless card and the appropriate drivers that are patched for injection and promiscuous/monitor mode.
 
 
+
+Dependencies
+------------
+
+In order to install all the prerequisites execute the following script. This script is for debian-based Linux distributions.
+
+```{r, engine='bash'}
+bash deps.sh
+bash deps.sh [CUDA or AMD]
+```
 Execution
 ---------
 
 To download and execute wifite, run the commands below:
 
-```bash
-git clone https://github.com/enovella/wifite.git  
-bash deps.sh
-bash deps.sh [CUDA or AMD]
+```sh
+git clone https://github.com/enovella/wifite.git
 chmod +x wifite.py
 python wifite.py
 ```
