@@ -6,7 +6,8 @@
 
 APTCMD="apt-get"
 APT_CANDIDATES="wget tshark gzip bzip2 tar p7zip p7zip-full"
-DEPS_PYRIT="python2.7-dev python2.7-libpcap subversion libpcap-dev nvidia-cuda-toolkit linux-headers-$(uname -r)"
+DEPS_PYRIT="python2.7-dev python2.7-libpcap subversion libpcap-dev nvidia-cuda-toolkit \ 
+            linux-headers-$(uname -r) python-dev libssl-dev libpcap-dev zlib1g-dev cmake libboost1.54"
 DEPS_AIRCRACK="build-essential libssl-dev pkg-config subversion libsqlite3-dev libpcap-dev sqlite3 libsqlite3-dev make gcc"
 DEPS_REAVER_PIXIE="git libssl-dev"
 
@@ -74,9 +75,6 @@ function install_cowpatty
 
 # function install_pyrit
 # {
-
-# 	$SUDO $APTCMD update
-# 	$SUDO $APTCMD install $APT_CANDIDATES -y 
 # 	$SUDO $APTCMD install $DEPS_PYRIT -y
 
 # 	if [ "AMD" == "$1" ]; then
@@ -110,6 +108,7 @@ function install_aircrack-ng-svn
 	cd aircrack-ng
 	make pcre=true sqlite=true -j2
 	$SUDO make pcre=true sqlite=true install
+	$SUDO airodump-ng-oui-update &
 
 	rm -rf /tmp/aircrack*
 }
@@ -117,7 +116,7 @@ function install_aircrack-ng-svn
 
 function install_reaver-pixie
 {
-	$SUDO $APTCMD $DEPS_REAVER_PIXIE -y
+	$SUDO $APTCMD install $DEPS_REAVER_PIXIE -y
 
 	cd /tmp
 	git clone https://github.com/wiire/pixiewps.git
