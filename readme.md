@@ -9,7 +9,7 @@ What's New?
 
 The biggest change from version 1 is support for the tool [reaver](http://reaver-wps.googlecode.com/), a Wifi-Protected Setup (WPS) attack tool.  Reaver can compromise the PIN and PSK for many routers that have WPS enabled, usually within hours. The tool pixiewps is also included and the script is up-to-date supporting the Pixie dust attack.
 
-Another big change is the [hashcat](https://hashcat.net)support. Now Wifite can perform  WPA cracking with multiGPUs at the same time. 
+Another big change is the support for [hashcat](https://hashcat.net). Now Wifite can perform WPA cracking with multiGPUs at the same time. 
 
 Other changes include a complete code re-write with bug fixes and added stability.  Due to problems with the Python Tkinter suite, the GUI has been left out of this latest version.
 
@@ -71,7 +71,10 @@ Suggested Programs
 
 * [__reaver__](http://code.google.com/p/reaver-wps/), a Wifi-Protected Setup (WPS) attack tool.  Reaver includes a scanner "walsh" (or "wash") for detecting WPS-enabled access points. Wifite uses Reaver to scan for and attack WPS-enabled routers.
 
-* [__hashcat__](https://hashcat.net), the best and fastest WPA PSK key MultiGPU cracker. Worlds fastest password cracker. It can be run as follows: `python wifite.py --aircrack --hashcat-gpu --dic /wordlists/rockyou.txt`
+* [__hashcat__](https://hashcat.net), the best and fastest WPA PSK key MultiGPU cracker. Worlds fastest password cracker. It can be run as follows: 
+```
+python wifite.py --aircrack --hashcat-gpu --dic /wordlists/rockyou.txt
+```
 
 * [__pyrit__](http://code.google.com/p/pyrit/), a GPU cracker for WPA PSK keys. Wifite uses pyrit (if found) to detect handshakes. In the future, Wifite may include an option to crack WPA handshakes via pyrit.
 
