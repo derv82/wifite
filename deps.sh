@@ -144,3 +144,5 @@ install_pyrit
 install_aircrack-ng-svn
 install_reaver-pixie
 install_hashcat $1
+
+
