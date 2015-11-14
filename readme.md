@@ -29,11 +29,13 @@ Execution
 
 To download and execute wifite, run the commands below:
 
-```git clone https://github.com/enovella/wifite.git  
+```bash
+git clone https://github.com/enovella/wifite.git  
 bash deps.sh
 bash deps.sh [CUDA or AMD]
 chmod +x wifite.py
-python wifite.py```
+python wifite.py
+```
 
 
 Required Programs
@@ -73,6 +75,10 @@ Licensing
 
 Wifite is licensed under the GNU General Public License version 2 (GNU GPL v2).
 
+```
 (C) 2010-2012 Derv Merkler
+```
 
+```
 (C) 2015-2016 Eduardo Novella   (@enovella_)
+```
