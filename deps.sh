@@ -111,7 +111,7 @@ function install_aircrack-ng-svn
 	make pcre=true sqlite=true -j2
 	$SUDO make pcre=true sqlite=true install
 
-    rm -rf /tmp/aircrack*
+	rm -rf /tmp/aircrack*
 }
 
 
