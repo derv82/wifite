@@ -26,6 +26,8 @@ else
     SUDO="sudo"
 fi
 
+
+# Check if number of arguments introduced is one
 if [ "$#" -ne 1 ]
 then 
 	echo -e "\nUsage: bash $0 AMD"
@@ -35,6 +37,7 @@ then
 	exit
 fi
 
+# Functions to install programs
 function install_hashcat()
 {
 
@@ -50,7 +53,7 @@ function install_hashcat()
 	wget https://hashcat.net/files/${prefix}Hashcat-1.37.7z
 	7z x ${prefix}Hashcat-1.37.7z
 	echo -e "\n[+] Your $RED HASHCAT_PATH $END to add in wifite.py is $GREEN $PWD/${prefix}Hashcat-1.37 $END\n"
-    rm ${prefix}Hashcat-1.37.7z 2>/dev/null
+	rm ${prefix}Hashcat-1.37.7z 2>/dev/null
 
 }
 
