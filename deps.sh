@@ -109,7 +109,7 @@ function install_aircrack-ng-svn
  	svn co http://svn.aircrack-ng.org/trunk/ aircrack-ng
 	cd aircrack-ng
 	make pcre=true sqlite=true -j2
-    $SUDO make pcre=true sqlite=true install
+	$SUDO make pcre=true sqlite=true install
 
     rm -rf /tmp/aircrack*
 }
