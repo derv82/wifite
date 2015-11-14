@@ -142,7 +142,7 @@ function install_reaver-pixie
 
 # MAIN
 $SUDO $APTCMD update
-$SUDO $APTCMD install APT_CANDIDATES -y
+$SUDO $APTCMD install $APT_CANDIDATES -y
 
 install_cowpatty
 install_pyrit
