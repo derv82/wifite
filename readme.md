@@ -29,9 +29,10 @@ Execution
 
 To download and execute wifite, run the commands below:
 
-`wget https://raw.github.com/derv82/wifite/master/wifite.py`  
+`git clone https://github.com/enovella/wifite.git`  
+`bash deps.sh`
 `chmod +x wifite.py`  
-`./wifite.py`  
+`python wifite.py`  
 
 
 Required Programs
@@ -55,11 +56,11 @@ Please see [the installation guide](https://github.com/derv82/wifite/wiki/Instal
 Suggested Programs
 ------------------
 
-_`*` indicates program is not included in [Backtrack 5 R1](http://www.backtrack-linux.org/)_
+* [__reaver__](http://code.google.com/p/reaver-wps/), a Wifi-Protected Setup (WPS) attack tool.  Reaver includes a scanner "walsh" (or "wash") for detecting WPS-enabled access points. Wifite uses Reaver to scan for and attack WPS-enabled routers.
 
-* `*`[__reaver__](http://code.google.com/p/reaver-wps/), a Wifi-Protected Setup (WPS) attack tool.  Reaver includes a scanner "walsh" (or "wash") for detecting WPS-enabled access points. Wifite uses Reaver to scan for and attack WPS-enabled routers.
+* [__hashcat__](https://hashcat.net), the best and fastest WPA PSK key MultiGPU cracker. Worlds fastest password cracker. It can be run as follows: `python wifite.py --aircrack --hashcat-gpu --dic /wordlists/rockyou.txt`
 
-* `*`[__pyrit__](http://code.google.com/p/pyrit/), a GPU cracker for WPA PSK keys. Wifite uses pyrit (if found) to detect handshakes. In the future, Wifite may include an option to crack WPA handshakes via pyrit.
+* [__pyrit__](http://code.google.com/p/pyrit/), a GPU cracker for WPA PSK keys. Wifite uses pyrit (if found) to detect handshakes. In the future, Wifite may include an option to crack WPA handshakes via pyrit.
 
 * __tshark__. Comes bundled with [Wireshark](http://www.wireshark.org/), packet sniffing software.
 
@@ -72,3 +73,4 @@ Licensing
 Wifite is licensed under the GNU General Public License version 2 (GNU GPL v2).
 
 (C) 2010-2012 Derv Merkler
+(C) 2015-2016 Eduardo Novella   (@enovella_)
