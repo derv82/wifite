@@ -4,6 +4,9 @@
 # 2015-11-13
 
 
+# TODO
+# pyrit has not been tested
+
 APTCMD="apt-get"
 APT_CANDIDATES="wget tshark gzip bzip2 tar p7zip p7zip-full"
 DEPS_PYRIT="python2.7-dev python2.7-libpcap subversion libpcap-dev nvidia-cuda-toolkit \ 
@@ -139,6 +142,8 @@ function install_reaver-pixie
 
 # MAIN
 $SUDO $APTCMD update
+$SUDO $APTCMD install APT_CANDIDATES -y
+
 install_cowpatty
 install_pyrit
 install_aircrack-ng-svn
