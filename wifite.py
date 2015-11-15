@@ -215,6 +215,7 @@ class RunConfiguration:
         self.PIXIE = False
         self.WPS_FINDINGS = []  # List of (successful) results of WPS attacks
         self.WPS_TIMEOUT = 660  # Time to wait (in seconds) for successful PIN attempt
+        self.WPS_PIXIE_TIMEOUT = 660  # Time to wait (in seconds) for successful pixie attack
         self.WPS_RATIO_THRESHOLD = 0.01  # Lowest percentage of tries/attempts allowed (where tries > 0)
         self.WPS_MAX_RETRIES = 0  # Number of times to re-try the same pin before giving up completely.
 
@@ -599,6 +600,16 @@ class RunConfiguration:
                 else:
                     print GR + ' [+]' + W + ' WPS attack timeout set to %s' % (
                     G + str(self.WPS_TIMEOUT) + " seconds" + W)
+            if options.pixiet:
+                try:
+                    self.WPS_PIXIE_TIMEOUT = int(options.pixiet)
+                except ValueError:
+                    print R + ' [!]' + O + ' invalid timeout: %s' % (R + options.pixiet + W)
+                except IndexError:
+                    print R + ' [!]' + O + ' no timeout given!' + W
+                else:
+                    print GR + ' [+]' + W + ' WPS PixieDust attack timeout set to %s' % (
+                    G + str(self.WPS_PIXIE_TIMEOUT) + " seconds" + W)
             if options.wpsratio:
                 try:
                     self.WPS_RATIO_THRESHOLD = float(options.wpsratio)
@@ -753,6 +764,8 @@ class RunConfiguration:
         wps_group.add_argument('--pixie', help='Only use the WPS PixieDust attack', default=False, action='store_true', dest='pixie')
         wps_group.add_argument('--wpst', help='Max wait for new retry before giving up (0: never).', action='store',
                                dest='wpst')
+        wps_group.add_argument('--pixiet', help='Max wait before giving up on PixieDust attack (0: never).', action='store',
+                               dest='pixiet')                
         wps_group.add_argument('-wpst', help=argparse.SUPPRESS, action='store', dest='wpst')
         wps_group.add_argument('--wpsratio', help='Min ratio of successful PIN attempts/total retries.', action='store',
                                dest='wpsratio')
@@ -3336,7 +3349,13 @@ class WPSAttack(Attack):
                 # Clear out output file
                 inf = open(self.RUN_CONFIG.temp + 'out.out', 'w')
                 inf.close()
-
+                
+                if self.RUN_CONFIG.WPS_PIXIE_TIMEOUT > 0 and (time.time() - time_started) > self.RUN_CONFIG.WPS_PIXIE_TIMEOUT:
+                   print R + '\n [!]' + O + ' unable to complete successful try in %d seconds' % (
+                   self.RUN_CONFIG.WPS_PIXIE_TIMEOUT)
+                   print R + ' [+]' + W + ' skipping %s' % (O + self.target.ssid + W)
+                   break
+                   
             # End of big "while not cracked" loop
             if cracked:
                 if pin != '': print GR + '\n\n [+]' + G + ' PIN found:     %s' % (C + pin + W)
