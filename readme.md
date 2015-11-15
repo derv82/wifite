@@ -92,6 +92,12 @@ Wifite is licensed under the GNU General Public License version 2 (GNU GPL v2).
 (C) 2010-2012 Derv Merkler
 ```
 
+```  
+
+(C) 2014-2015 ballastsec@gmail.com --> bwall  @botnet_hunter   && drone  @dronesec
+              g0tmi1k && invisibleroads &&  intech && hatRiot 
+```
+
 ```
 (C) 2015-2016 Eduardo Novella   (@enovella_)
 ```
