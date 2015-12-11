@@ -63,7 +63,7 @@ _`*` indicates program is not included in [Backtrack 5 R1](http://www.backtrack-
 
 * __tshark__. Comes bundled with [Wireshark](http://www.wireshark.org/), packet sniffing software.
 
-* [__cowpatty__](http://www.willhackforsushi.com/Cowpatty.html), a WPA PSK key cracker. Wifite uses cowpatty (if found) to detect handshakes.
+* [__cowpatty__](http://www.willhackforsushi.com/?page_id=50), a WPA PSK key cracker. Wifite uses cowpatty (if found) to detect handshakes.
 
 
 Licensing
