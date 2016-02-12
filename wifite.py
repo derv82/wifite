@@ -2258,11 +2258,11 @@ class WPAAttack(Attack):
                 if not os.path.exists(self.RUN_CONFIG.temp + 'wpa-01.cap'): continue
                 copy(self.RUN_CONFIG.temp + 'wpa-01.cap', self.RUN_CONFIG.temp + 'wpa-01.cap.temp')
 
-                # Spawn pcap fix, fix wpa-01.cap.temp, rewrite fixed pcap to original location
+                # Spawn pcapfix, if broken, fix wpa-01.cap.temp, rewrite fixed pcap to original location
                 if program_exists('pcapfix'):
-                    cmd = ['pcapfix', self.RUN_CONFIG.temp + 'wpa-01.cap.temp'] # Run pcapfix on temp pcap
+                    cmd = ['pcapfix', self.RUN_CONFIG.temp + 'wpa-01.cap.temp']
                     proc = Popen(cmd, stdout=DN, stderr=DN)
-                    proc.wait()
+                    proc.wait() # wait until pcapfix is complete
                     # Rename fixed pcap file only if it exists
                     if os.path.isfile(self.RUN_CONFIG.temp + 'fixed_wpa-01.cap.temp'):
                         rename(self.RUN_CONFIG.temp + 'fixed_wpa-01.cap.temp', self.RUN_CONFIG.temp + 'wpa-01.cap.temp')
