@@ -2261,7 +2261,7 @@ class WPAAttack(Attack):
                 # Spawn pcap fix, fix wpa-01.cap.temp, rewrite fixed pcap to original location
                 if program_exists('pcapfix'):
                     cmd = ['pcapfix', self.RUN_CONFIG.temp + 'wpa-01.cap.temp'] # Run pcapfix on temp pcap
-                    proc = subprocess.Popen(cmd, stdout=DN, stderr=DN)
+                    proc = Popen(cmd, stdout=DN, stderr=DN)
                     proc.wait()
                     # Rename fixed pcap file only if it exists
                     if os.path.isfile(self.RUN_CONFIG.temp + 'fixed_wpa-01.cap.temp'):
