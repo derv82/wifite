@@ -869,7 +869,7 @@ class RunEngine:
             print R + ' [!]' + O + ' please re-install reaver or install walsh/wash separately' + W
 
         # Check handshake-checking apps
-        recs = ['tshark', 'pyrit', 'cowpatty']
+        recs = ['tshark', 'pyrit', 'cowpatty', 'pcapfix']
         for rec in recs:
             if program_exists(rec): continue
             printed = True
@@ -2021,6 +2021,7 @@ def get_essid_from_cap(bssid, capfile):
     cmd = ['tshark',
            '-r', capfile,
            '-R', 'wlan.fc.type_subtype == 0x05 && wlan.sa == %s' % bssid,
+           '-2',
            '-n']
     proc = Popen(cmd, stdout=PIPE, stderr=DN)
     proc.wait()
@@ -2048,6 +2049,7 @@ def get_bssid_from_cap(essid, capfile):
         cmd = ['tshark',
                '-r', capfile,
                '-R', 'wlan_mgt.ssid == "%s" && wlan.fc.type_subtype == 0x05' % (essid),
+               '-2',
                '-n',  # Do not resolve MAC vendor names
                '-T', 'fields',  # Only display certain fields
                '-e', 'wlan.sa']  # souce MAC address
@@ -2059,6 +2061,7 @@ def get_bssid_from_cap(essid, capfile):
     cmd = ['tshark',
            '-r', capfile,
            '-R', 'eapol',
+           '-2',
            '-n']
     proc = Popen(cmd, stdout=PIPE, stderr=DN)
     proc.wait()
@@ -2255,6 +2258,15 @@ class WPAAttack(Attack):
                 if not os.path.exists(self.RUN_CONFIG.temp + 'wpa-01.cap'): continue
                 copy(self.RUN_CONFIG.temp + 'wpa-01.cap', self.RUN_CONFIG.temp + 'wpa-01.cap.temp')
 
+                # Spawn pcapfix, if broken, fix wpa-01.cap.temp, rewrite fixed pcap to original location
+                if program_exists('pcapfix'):
+                    cmd = ['pcapfix', self.RUN_CONFIG.temp + 'wpa-01.cap.temp']
+                    proc = Popen(cmd, stdout=DN, stderr=DN)
+                    proc.wait() # wait until pcapfix is complete
+                    # Rename fixed pcap file only if it exists
+                    if os.path.isfile(self.RUN_CONFIG.temp + 'fixed_wpa-01.cap.temp'):
+                        rename(self.RUN_CONFIG.temp + 'fixed_wpa-01.cap.temp', self.RUN_CONFIG.temp + 'wpa-01.cap.temp')
+
                 # Save copy of cap file (for debugging)
                 #remove_file('/root/new/wpa-01.cap')
                 #copy(temp + 'wpa-01.cap', '/root/new/wpa-01.cap')
@@ -2341,6 +2353,7 @@ class WPAAttack(Attack):
             cmd = ['tshark',
                    '-r', capfile,  # Input file
                    '-R', 'eapol',  # Filter (only EAPOL packets)
+                   '-2',
                    '-n']  # Do not resolve names (MAC vendors)
             proc = Popen(cmd, stdout=PIPE, stderr=DN)
             proc.wait()
@@ -2541,6 +2554,7 @@ class WPAAttack(Attack):
             cmd = ['tshark',
                    '-r', capfile,  # input file
                    '-R', 'eapol || wlan_mgt.tag.interpretation',  # filter
+                   '-2',
                    '-w', capfile + '.temp']  # output file
             proc_strip = call(cmd, stdout=DN, stderr=DN)
 
