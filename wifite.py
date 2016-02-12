@@ -869,7 +869,7 @@ class RunEngine:
             print R + ' [!]' + O + ' please re-install reaver or install walsh/wash separately' + W
 
         # Check handshake-checking apps
-        recs = ['tshark', 'pyrit', 'cowpatty']
+        recs = ['tshark', 'pyrit', 'cowpatty', 'pcapfix']
         for rec in recs:
             if program_exists(rec): continue
             printed = True
