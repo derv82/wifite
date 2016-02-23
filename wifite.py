@@ -1691,7 +1691,7 @@ def get_revision():
         sock = urllib.urlopen('https://github.com/derv82/wifite/raw/master/wifite.py')
         page = sock.read()
     except IOError:
-        return (-1, '', '')
+        return irev
 
     # get the revision
     start = page.find('REVISION = ')
