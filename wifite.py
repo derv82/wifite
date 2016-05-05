@@ -762,6 +762,7 @@ def enable_monitor_mode(iface):
 	global IFACE_TO_TAKE_DOWN
 	print GR+' [+]'+W+' enabling monitor mode on %s...' % (G+iface+W),
 	stdout.flush()
+	call(['airmon-ng check kill'.split()] , stdout=DN, stderr=DN)
 	call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
 	print 'done'
 	IFACE_TO_TAKE_DOWN = get_iface()
