@@ -104,7 +104,7 @@ if not os.path.exists(WPA_DICTIONARY): WPA_DICTIONARY = ''
 # Various programs to use when checking for a four-way handshake.
 # True means the program must find a valid handshake in order for wifite to recognize a handshake.
 # Not finding handshake short circuits result (ALL 'True' programs must find handshake)
-WPA_HANDSHAKE_TSHARK   = True  # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
+WPA_HANDSHAKE_TSHARK   = False  # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
 WPA_HANDSHAKE_PYRIT    = False # Sometimes crashes on incomplete dumps, but accurate.
 WPA_HANDSHAKE_AIRCRACK = True  # Not 100% accurate, but fast.
 WPA_HANDSHAKE_COWPATTY = False # Uses more lenient "nonstrict mode" (-2)
