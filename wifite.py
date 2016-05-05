@@ -824,9 +824,8 @@ def get_iface():
 
 	proc  = Popen(['airmon-ng'], stdout=PIPE, stderr=DN)
 	for line in proc.communicate()[0].split('\n'):
-		if len(line) == 0 or line.startswith('Interface'): continue
-		#monitors.append(line[:line.find('\t')])
-		monitors.append(line)
+		if len(line) == 0 or line.split()[0] in ['Interface','PHY']: continue
+		monitors.append(line.split()[1])
 
 	if len(monitors) == 0:
 		print R+' [!]'+O+" no wireless interfaces were found."+W
@@ -837,7 +836,7 @@ def get_iface():
 		return enable_monitor-mode
 
 	elif len(monitors) == 1:
-		monitor = monitors[0][:monitors[0].find('\t')]
+		monitor = monitors[0]
 		mac_anonymize(monitor)
 
 		return enable_monitor_mode(monitor)
