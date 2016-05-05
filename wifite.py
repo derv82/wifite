@@ -1974,9 +1974,9 @@ def has_handshake(target, capfile):
 	"""
 	valid_handshake = True
 	tried = False
-	if WPA_HANDSHAKE_TSHARK:
+	if WPA_HANDSHAKE_AIRCRACK:
 		tried = True
-		valid_handshake = has_handshake_tshark(target, capfile)
+		valid_handshake = has_handshake_aircrack(target, capfile)
 
 	if valid_handshake and WPA_HANDSHAKE_COWPATTY:
 		tried = True
@@ -1992,10 +1992,10 @@ def has_handshake(target, capfile):
 		tried = True
 		valid_handshake = has_handshake_pyrit(target, capfile)
 
-	# Check for handshake using aircrack-ng
-	if valid_handshake and WPA_HANDSHAKE_AIRCRACK:
+	# Check for handshake using tshark
+	if valid_handshake and WPA_HANDSHAKE_TSHARK:
 		tried = True
-		valid_handshake = has_handshake_aircrack(target, capfile)
+		valid_handshake = has_handshake_tshark(target, capfile)
 
 	if tried: return valid_handshake
 	print R+' [!]'+O+' unable to check for handshake: all handshake options are disabled!'
