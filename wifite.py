@@ -1040,7 +1040,7 @@ class RunEngine:
         while not ri.isdigit() or int(ri) < 1 or int(ri) > len(monitors):
             ri = raw_input(" [+] select number of device to put into monitor mode (%s1-%d%s): " % (G, len(monitors), W))
         i = int(ri)
-        monitor = monitors[i - 1][:monitors[i - 1].find('\t')]
+        monitor = monitors[i - 1].split('\t')[1]
 
         return self.enable_monitor_mode(monitor)
 
