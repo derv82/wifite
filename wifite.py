@@ -148,7 +148,7 @@ class RunConfiguration:
 		# Various programs to use when checking for a four-way handshake.
 		# True means the program must find a valid handshake in order for wifite to recognize a handshake.
 		# Not finding handshake short circuits result (ALL 'True' programs must find handshake)
-		self.WPA_HANDSHAKE_TSHARK = False  # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
+		self.WPA_HANDSHAKE_TSHARK = True  # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
 		self.WPA_HANDSHAKE_PYRIT = False  # Sometimes crashes on incomplete dumps, but accurate.
 		self.WPA_HANDSHAKE_AIRCRACK = True  # Not 100% accurate, but fast.
 		self.WPA_HANDSHAKE_COWPATTY = False  # Uses more lenient "nonstrict mode" (-2)
@@ -2263,8 +2263,7 @@ class WPAAttack(Attack):
 
 					print '\n %s %shandshake captured%s! saved as "%s"' % (
 					GR + sec_to_hms(seconds_running) + W, G, W, G + save_as + W)
-					self.RUN_CONFIG.WPA_FINDINGS.append(
-						'%s (%s) handshake captured' % (self.target.ssid, self.target.bssid))
+					self.RUN_CONFIG.WPA_FINDINGS.append('%s (%s) handshake captured' % (self.target.ssid, self.target.bssid))
 					self.RUN_CONFIG.WPA_FINDINGS.append('saved as %s' % (save_as))
 					self.RUN_CONFIG.WPA_FINDINGS.append('')
 
@@ -3314,7 +3313,7 @@ class WPSAttack(Attack):
 				if 'Sending M2 message' in output_line:
 					# At this point in the Pixie attack, all output is via stderr
 					# We have to wait for the process to finish to see the result.
-					print O, 'attempting to crack and fetch psk...					   ', W,
+					print O, 'attempting to crack and fetch psk...', W,
 				elif output_line != '':
 					# Print the last message from reaver as a "status update"
 					print C, output_line, W, ' ' * (50 - len(output_line)),
