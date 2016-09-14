@@ -1163,7 +1163,7 @@ class RunEngine:
 
 					os.system('clear')
 					print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + W + '), updates at 5 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.\n'
-					print "   NUM ESSID				 %sCH  ENCR  POWER  WPS?  CLIENT" % (
+					print "   NUM ESSID                 %sCH  ENCR  POWER  WPS?  CLIENT" % (
 					'BSSID			  ' if self.RUN_CONFIG.SHOW_MAC_IN_SCAN else '')
 					print '   --- --------------------  %s--  ----  -----  ----  ------' % (
 					'-----------------  ' if self.RUN_CONFIG.SHOW_MAC_IN_SCAN else '')
