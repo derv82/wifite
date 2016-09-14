@@ -55,7 +55,6 @@
 
 """
 
-
 #############
 # LIBRARIES #
 #############
@@ -64,27 +63,19 @@ import os     # File management
 import time   # Measuring attack intervals
 import random # Generating a random MAC address.
 import errno  # Error numbers
+import re 	  # RegEx, Converting SSID to filename
 
-from sys import argv          # Command-line arguments
+from sys import argv # Command-line arguments
 from sys import stdout, stdin # Flushing
-
 from shutil import copy # Copying .cap files
-
-# Executing, communicating with, killing processes
-from subprocess import Popen, call, PIPE
-from signal import SIGINT, SIGTERM
-
-import re # RegEx, Converting SSID to filename
-
-
-
+from subprocess import Popen, call, PIPE # Executing, communicating with, killing processes
+from signal import SIGINT, SIGTERM # Executing, communicating with, killing processes
 
 ################################
 # GLOBAL VARIABLES IN ALL CAPS #
 ################################
 
 REVISION = 85;
-
 
 # WPA variables
 WPA_DISABLE          = False # Flag to skip WPA handshake capture
@@ -108,8 +99,6 @@ WPA_HANDSHAKE_TSHARK   = False  # Checks for sequential 1,2,3 EAPOL msg packets 
 WPA_HANDSHAKE_PYRIT    = False # Sometimes crashes on incomplete dumps, but accurate.
 WPA_HANDSHAKE_AIRCRACK = True  # Not 100% accurate, but fast.
 WPA_HANDSHAKE_COWPATTY = False # Uses more lenient "nonstrict mode" (-2)
-
-
 
 # WEP variables
 WEP_DISABLE         = False # Flag for ignoring WEP networks
@@ -182,10 +171,6 @@ if not temp.endswith(os.sep):
 # /dev/null, send output from programs so they don't print to screen.
 DN = open(os.devnull, 'w')
 
-
-
-
-
 ###################
 # DATA STRUCTURES #
 ###################
@@ -222,18 +207,9 @@ class Client:
 		self.station = station
 		self.power   = power
 
-
-
-
-
-
-
-
-
 ##################
 # MAIN FUNCTIONS #
 ##################
-
 
 def main():
 	"""
@@ -737,16 +713,6 @@ def help():
 	print sw+'\t./wifite.py '+W+'-wps -wep -c 6 -pps 600'+W
 	print ''
 
-
-
-
-
-
-
-
-
-
-
 ###########################
 # WIRELESS CARD FUNCTIONS #
 ###########################
@@ -767,7 +733,6 @@ def enable_monitor_mode(iface):
 	print 'done'
 	IFACE_TO_TAKE_DOWN = get_iface()
 	return IFACE_TO_TAKE_DOWN
-
 
 def disable_monitor_mode():
 	"""
@@ -855,17 +820,9 @@ def get_iface():
 
 	return enable_monitor_mode(monitor)
 
-
-
-
-
-
-
-
 ######################
 # SCANNING FUNCTIONS #
 ######################
-
 
 def scan(channel=0, iface='', tried_rtl8187_fix=False):
 	"""
@@ -1294,24 +1251,6 @@ def print_and_exec(cmd):
 	call(cmd, stdout=DN, stderr=DN)
 	time.sleep(0.1)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ####################
 # HELPER FUNCTIONS #
 ####################
@@ -1643,18 +1582,9 @@ def attack_interrupted_prompt():
 			should_we_exit = True
 	return should_we_exit
 
-
-
-
-
-
-
-
-
 #################
 # WPA FUNCTIONS #
 #################
-
 
 def wpa_get_handshake(iface, target, clients):
 	"""
@@ -2058,7 +1988,6 @@ def load_cracked():
 		result.append(tar)
 	return result
 
-
 ##########################
 # WPA CRACKING FUNCTIONS #
 ##########################
@@ -2158,17 +2087,6 @@ def add_commas(n):
 		result += strn[i]
 		i += 1
 	return result
-
-
-
-
-
-
-
-
-
-
-
 
 #################
 # WEP FUNCTIONS #
@@ -2671,15 +2589,6 @@ def wep_send_deauths(iface, target, clients):
 			     iface]
 		call(cmd, stdout=DN, stderr=DN)
 
-
-
-
-
-
-
-
-
-
 #################
 # WPS FUNCTIONS #
 #################
@@ -2826,14 +2735,6 @@ def wps_attack(iface, target):
 	send_interrupt(proc)
 
 	return cracked
-
-
-
-#c = CapFile('hs/KillfuckSoulshitter_C0-C1-C0-07-54-DC_2.cap', 'Killfuck Soulshitter', 'c0:c1:c0:07:54:dc')
-#WPA_CRACKER = 'aircrack'
-#cracked = wpa_crack(c)
-#print cracked
-#exit_gracefully(1)
 
 if __name__ == '__main__':
 	try:
