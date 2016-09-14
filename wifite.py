@@ -78,21 +78,16 @@ import os  # File management
 import time  # Measuring attack intervals
 import random  # Generating a random MAC address.
 import errno  # Error numbers
-
-from sys import argv  # Command-line arguments
-from sys import stdout  # Flushing
-
-from shutil import copy  # Copying .cap files
-
-# Executing, communicating with, killing processes
-from subprocess import Popen, call, PIPE
-from signal import SIGINT, SIGTERM
-
 import re  # RegEx, Converting SSID to filename
 import argparse  # arg parsing
 import urllib  # Check for new versions from the repo
 import abc  # abstract base class libraries for attack templates
 
+from sys import argv  # Command-line arguments
+from sys import stdout  # Flushing
+from shutil import copy  # Copying .cap files
+from subprocess import Popen, call, PIPE # Executing, communicating with, killing processes
+from signal import SIGINT, SIGTERM # Executing, communicating with, killing processes
 
 ################################
 # GLOBAL VARIABLES IN ALL CAPS #
@@ -190,7 +185,7 @@ class RunConfiguration:
         # Various programs to use when checking for a four-way handshake.
         # True means the program must find a valid handshake in order for wifite to recognize a handshake.
         # Not finding handshake short circuits result (ALL 'True' programs must find handshake)
-        self.WPA_HANDSHAKE_TSHARK = True  # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
+        self.WPA_HANDSHAKE_TSHARK = False  # Checks for sequential 1,2,3 EAPOL msg packets (ignores 4th)
         self.WPA_HANDSHAKE_PYRIT = False  # Sometimes crashes on incomplete dumps, but accurate.
         self.WPA_HANDSHAKE_AIRCRACK = True  # Not 100% accurate, but fast.
         self.WPA_HANDSHAKE_COWPATTY = False  # Uses more lenient "nonstrict mode" (-2)
@@ -215,6 +210,7 @@ class RunConfiguration:
         self.PIXIE = False
         self.WPS_FINDINGS = []  # List of (successful) results of WPS attacks
         self.WPS_TIMEOUT = 660  # Time to wait (in seconds) for successful PIN attempt
+        self.WPS_PIXIE_TIMEOUT = 660  # Time to wait (in seconds) for successful pixie attack
         self.WPS_RATIO_THRESHOLD = 0.01  # Lowest percentage of tries/attempts allowed (where tries > 0)
         self.WPS_MAX_RETRIES = 0  # Number of times to re-try the same pin before giving up completely.
 
@@ -599,6 +595,16 @@ class RunConfiguration:
                 else:
                     print GR + ' [+]' + W + ' WPS attack timeout set to %s' % (
                     G + str(self.WPS_TIMEOUT) + " seconds" + W)
+            if options.pixiet:
+				try:
+					self.WPS_PIXIE_TIMEOUT = int(options.pixiet)
+				except ValueError:
+					print R + ' [!]' + O + ' invalid timeout: %s' % (R + options.pixiet + W)
+				except IndexError:
+					print R + ' [!]' + O + ' no timeout given!' + W
+				else:
+					print GR + ' [+]' + W + ' WPS PixieDust attack timeout set to %s' % (
+					G + str(self.WPS_PIXIE_TIMEOUT) + " seconds" + W)
             if options.wpsratio:
                 try:
                     self.WPS_RATIO_THRESHOLD = float(options.wpsratio)
@@ -751,8 +757,8 @@ class RunConfiguration:
                                dest='wps')
         wps_group.add_argument('-wps', help=argparse.SUPPRESS, default=False, action='store_true', dest='wps')
         wps_group.add_argument('--pixie', help='Only use the WPS PixieDust attack', default=False, action='store_true', dest='pixie')
-        wps_group.add_argument('--wpst', help='Max wait for new retry before giving up (0: never).', action='store',
-                               dest='wpst')
+        wps_group.add_argument('--wpst', help='Max wait for new retry before giving up (0: never).', action='store', dest='wpst')
+        wps_group.add_argument('--pixiet', help='Max wait before giving up on PixieDust attack (0: never).', action='store', dest='pixiet')
         wps_group.add_argument('-wpst', help=argparse.SUPPRESS, action='store', dest='wpst')
         wps_group.add_argument('--wpsratio', help='Min ratio of successful PIN attempts/total retries.', action='store',
                                dest='wpsratio')
@@ -869,7 +875,7 @@ class RunEngine:
             print R + ' [!]' + O + ' please re-install reaver or install walsh/wash separately' + W
 
         # Check handshake-checking apps
-        recs = ['tshark', 'pyrit', 'cowpatty']
+        recs = ['tshark', 'pyrit', 'cowpatty', 'pcapfix']
         for rec in recs:
             if program_exists(rec): continue
             printed = True
@@ -896,7 +902,7 @@ class RunEngine:
         if self.RUN_CONFIG.TX_POWER > 0:
             print GR + ' [+]' + W + ' setting Tx power to %s%s%s...' % (G, self.RUN_CONFIG.TX_POWER, W),
             call(['iw', 'reg', 'set', 'BO'], stdout=OUTLOG, stderr=ERRLOG)
-            call(['iwconfig', iface, 'txpower', self.RUN_CONFIG.TX_POWER], stdout=OUTLOG, stderr=ERRLOG)
+            call(['iwconfig', iface, 'txpower', str(self.RUN_CONFIG.TX_POWER)], stdout=OUTLOG, stderr=ERRLOG)
             print 'done'
         return self.RUN_CONFIG.IFACE_TO_TAKE_DOWN
 
@@ -1696,7 +1702,7 @@ def get_revision():
         sock = urllib.urlopen('https://github.com/derv82/wifite/raw/master/wifite.py')
         page = sock.read()
     except IOError:
-        return (-1, '', '')
+        return irev
 
     # get the revision
     start = page.find('REVISION = ')
@@ -2026,6 +2032,7 @@ def get_essid_from_cap(bssid, capfile):
     cmd = ['tshark',
            '-r', capfile,
            '-R', 'wlan.fc.type_subtype == 0x05 && wlan.sa == %s' % bssid,
+           '-2',
            '-n']
     proc = Popen(cmd, stdout=PIPE, stderr=DN)
     proc.wait()
@@ -2053,6 +2060,7 @@ def get_bssid_from_cap(essid, capfile):
         cmd = ['tshark',
                '-r', capfile,
                '-R', 'wlan_mgt.ssid == "%s" && wlan.fc.type_subtype == 0x05' % (essid),
+               '-2',
                '-n',  # Do not resolve MAC vendor names
                '-T', 'fields',  # Only display certain fields
                '-e', 'wlan.sa']  # souce MAC address
@@ -2064,6 +2072,7 @@ def get_bssid_from_cap(essid, capfile):
     cmd = ['tshark',
            '-r', capfile,
            '-R', 'eapol',
+           '-2',
            '-n']
     proc = Popen(cmd, stdout=PIPE, stderr=DN)
     proc.wait()
@@ -2260,6 +2269,15 @@ class WPAAttack(Attack):
                 if not os.path.exists(self.RUN_CONFIG.temp + 'wpa-01.cap'): continue
                 copy(self.RUN_CONFIG.temp + 'wpa-01.cap', self.RUN_CONFIG.temp + 'wpa-01.cap.temp')
 
+                # Spawn pcap fix, fix wpa-01.cap.temp, rewrite fixed pcap to original location
+				if program_exists('pcapfix'):
+					cmd = ['pcapfix', self.RUN_CONFIG.temp + 'wpa-01.cap.temp'] # Run pcapfix on temp pcap
+					proc = Popen(cmd, stdout=DN, stderr=DN)
+					proc.wait()
+					# Rename fixed pcap file only if it exists
+					if os.path.isfile(self.RUN_CONFIG.temp + 'fixed_wpa-01.cap.temp'):
+						rename(self.RUN_CONFIG.temp + 'fixed_wpa-01.cap.temp', self.RUN_CONFIG.temp + 'wpa-01.cap.temp')
+
                 # Save copy of cap file (for debugging)
                 #remove_file('/root/new/wpa-01.cap')
                 #copy(temp + 'wpa-01.cap', '/root/new/wpa-01.cap')
@@ -2346,6 +2364,7 @@ class WPAAttack(Attack):
             cmd = ['tshark',
                    '-r', capfile,  # Input file
                    '-Y', 'eapol',  # Filter (only EAPOL packets)
+                   '-2',
                    '-n']  # Do not resolve names (MAC vendors)
             proc = Popen(cmd, stdout=PIPE, stderr=DN)
             proc.wait()
@@ -2546,6 +2565,7 @@ class WPAAttack(Attack):
             cmd = ['tshark',
                    '-r', capfile,  # input file
                    '-R', 'eapol || wlan_mgt.tag.interpretation',  # filter
+                   '-2',
                    '-w', capfile + '.temp']  # output file
             proc_strip = call(cmd, stdout=DN, stderr=DN)
 
@@ -3341,6 +3361,12 @@ class WPSAttack(Attack):
                 # Clear out output file
                 inf = open(self.RUN_CONFIG.temp + 'out.out', 'w')
                 inf.close()
+
+				if self.RUN_CONFIG.WPS_PIXIE_TIMEOUT > 0 and (time.time() - time_started) > self.RUN_CONFIG.WPS_PIXIE_TIMEOUT:
+					print R + '\n [!]' + O + ' unable to complete successful try in %d seconds' % (
+					self.RUN_CONFIG.WPS_PIXIE_TIMEOUT)
+					print R + ' [+]' + W + ' skipping %s' % (O + self.target.ssid + W)
+					break
 
             # End of big "while not cracked" loop
             if cracked:
