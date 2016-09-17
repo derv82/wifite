@@ -1643,14 +1643,14 @@ def banner(RUN_CONFIG):
 		Displays ASCII art of the highest caliber.
 	"""
 	print ''
-	print G + "  .;'					 `;,	"
-	print G + " .;'  ,;'			 `;,  `;,   " + W + "WiFite v2 (r" + str(RUN_CONFIG.REVISION) + ")"
+	print G + "  .;'      `;, "
+	print G + " .;'  ,;'    `;,  `;,   " + W + "WiFite v2 (r" + str(RUN_CONFIG.REVISION) + ")"
 	print G + ".;'  ,;'  ,;'	 `;,  `;,  `;,  "
 	print G + "::   ::   :   " + GR + "( )" + G + "   :   ::   ::  " + GR + "automated wireless auditor"
 	print G + "':.  ':.  ':. " + GR + "/_\\" + G + " ,:'  ,:'  ,:'  "
 	print G + " ':.  ':.	" + GR + "/___\\" + G + "	,:'  ,:'   " + GR + "designed for Linux"
 	print G + "  ':.	   " + GR + "/_____\\" + G + "	  ,:'	 "
-	print G + "		   " + GR + "/	   \\" + G + "			 "
+	print G + "	    " + GR + "/	   \\" + G + "	   "
 	print W
 
 
