@@ -3,6 +3,7 @@ wifite
 
 An automated wireless attack tool.
 
+This script just hasn't worked for the longest time so I forked it. I'm no coding pro, but I know how to merge pulls, so send them through.
 
 What's New?
 -----------
@@ -17,19 +18,18 @@ About
 
 _Wifite is for Linux only._
 
-Wifite was designed for use with pentesting distributions of Linux, such as [Kali Linux](http://www.kali.org/), [Pentoo](http://www.pentoo.ch/), [BackBox](http://www.backbox.org); any Linux distributions with wireless drivers patched for injection. The script appears to also operate with Ubuntu 11/10, Debian 6, and Fedora 16.
+Wifite was designed for use with pentesting distributions of Linux, such as [Kali Linux](http://www.kali.org/), [Pentoo](http://www.pentoo.ch/); any Linux distributions with wireless drivers patched for injection.
 
 Wifite must be run as __root__. This is required by the suite of programs it uses. Running downloaded scripts as root is a bad idea. I recommend using the Kali Linux bootable Live CD, a bootable USB stick (for persistent), or a virtual machine. Note that Virtual Machines cannot directly access hardware so a wireless USB dongle would be required.
 
 Wifite assumes that you have a wireless card and the appropriate drivers that are patched for injection and promiscuous/monitor mode.
-
 
 Execution
 ---------
 
 To download and execute wifite, run the commands below:
 
-`wget https://raw.github.com/derv82/wifite/master/wifite.py`
+`wget https://raw.githubusercontent.com/kurobeats/wifite/master/wifite.py`
 `chmod +x wifite.py`
 `./wifite.py`
 
@@ -37,7 +37,7 @@ To download and execute wifite, run the commands below:
 Required Programs
 -----------------
 
-Please see [the installation guide](https://github.com/derv82/wifite/wiki/Installation) on the wiki for help installing any of the tools below.
+Please see [the installation guide](https://github.com/kurobeats/wifite/wiki/Installation) on the wiki for help installing any of the tools below.
 
 * [__Python 2.7.x__](http://python.org/getit/). Wifite is a Python script and requires Python to run.
 
