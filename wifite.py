@@ -239,6 +239,7 @@ class RunConfiguration:
         self.ATTACK_ALL_TARGETS = False  # Flag for when we want to attack *everyone*
         self.ATTACK_MIN_POWER = 0  # Minimum power (dB) for access point to be considered a target
         self.VERBOSE_APS = True  # Print access points as they appear
+        self.CLIENTS_ONLY = False # Show only points connected with clients
         self.CRACKED_TARGETS = self.load_cracked()
         old_cracked = self.load_old_cracked()
         if len(old_cracked) > 0:
@@ -439,6 +440,9 @@ class RunConfiguration:
             if options.quiet:
                 self.VERBOSE_APS = False
                 print GR + ' [+]' + W + ' list of APs during scan ' + O + 'disabled' + W
+            if options.clients:
+                self.CLIENTS_ONLY = True
+                print(GR + ' [+] search for spots only with clients')
             if options.check:
                 try:
                     capfile = options.check
@@ -674,6 +678,9 @@ class RunConfiguration:
         global_group.add_argument('--update', help='Check and update Wifite.', default=False, action='store_true',
                                   dest='update')
         global_group.add_argument('-update', help=argparse.SUPPRESS, default=False, action='store_true', dest='update')
+        global_group.add_argument('--clients', help='Show only points with connected clients', default=False, action='store_true', dest='clients')
+        global_group.add_argument('-clients', help=argparse.SUPPRESS, default=False, action='store_true', dest='clients')
+
         # set wpa commands
         wpa_group = option_parser.add_argument_group('WPA')
         wpa_group.add_argument('--wpa', help='Only target WPA networks (works with --wps --wep).', default=False,
@@ -1182,6 +1189,16 @@ class RunEngine:
                                           (GR + sec_to_hms(time.time() - time_started) + W, G + t.ssid + W)
 
                     old_targets = targets[:]
+                if self.RUN_CONFIG.CLIENTS_ONLY:
+                    new_targets = []
+                    for t in targets:
+                        contains = False
+                        for c in clients:
+                            if c.station == t.bssid:
+                                contains = True
+                        if contains:
+                            new_targets.append(t)
+                    targets = new_targets[:]
                 if self.RUN_CONFIG.VERBOSE_APS and len(targets) > 0:
                     targets = sorted(targets, key=lambda t: t.power, reverse=True)
                     if not self.RUN_CONFIG.WPS_DISABLE:
@@ -1194,6 +1211,14 @@ class RunEngine:
                     print '   --- --------------------  %s--  ----  -----  ----  ------' % (
                     '-----------------  ' if self.RUN_CONFIG.SHOW_MAC_IN_SCAN else '')
                     for i, target in enumerate(targets):
+                        isStationHaveClients = False
+                        clientsCount = 0
+                        for c in clients:
+                            if c.station == target.bssid:
+                                isStationHaveClients = True
+                                clientsCount += 1
+                        if not isStationHaveClients:
+                            continue
                         print "   %s%2d%s " % (G, i + 1, W),
                         # SSID
                         if target.ssid == '':
@@ -1235,7 +1260,7 @@ class RunEngine:
                         for c in clients:
                             if c.station == target.bssid:
                                 if client_text == '':
-                                    client_text = 'client'
+                                    client_text = str(clientsCount) + ' client'
                                 elif client_text[-1] != "s":
                                     client_text += "s"
                         if client_text != '':
