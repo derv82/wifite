@@ -8,7 +8,7 @@ This script just hasn't worked for the longest time so I forked it. I'm no codin
 What's New?
 -----------
 
-The biggest change from version 1 is support for ["reaver"](http://reaver-wps.googlecode.com/), a Wifi-Protected Setup (WPS) attack tool.  Reaver can compromise the PIN and PSK for many routers that have WPS enabled, usually within hours.
+The biggest change from version 1 is support for ["reaver"](https://github.com/gabrielrcouto/reaver-wps/), a Wifi-Protected Setup (WPS) attack tool.  Reaver can compromise the PIN and PSK for many routers that have WPS enabled, usually within hours.
 
 Other changes include a complete code re-write with bug fixes and added stability.  Due to problems with the Python Tkinter suite, the GUI has been left out of this latest version.
 
@@ -37,7 +37,7 @@ To download and execute wifite, run the commands below:
 Required Programs
 -----------------
 
-Please see [the installation guide](https://github.com/kurobeats/wifite/wiki/Installation) on the wiki for help installing any of the tools below.
+Please see [the installation guide](https://github.com/derv82/wifite/wiki/Installation) on the wiki for help installing any of the tools below (it's extremely outdated).
 
 * [__Python 2.7.x__](http://python.org/getit/). Wifite is a Python script and requires Python to run.
 
@@ -55,13 +55,13 @@ Please see [the installation guide](https://github.com/kurobeats/wifite/wiki/Ins
 Suggested Programs
 ------------------
 
-* [__reaver__](http://code.google.com/p/reaver-wps/), a Wifi-Protected Setup (WPS) attack tool.  Reaver includes a scanner "walsh" (or "wash") for detecting WPS-enabled access points. Wifite uses Reaver to scan for and attack WPS-enabled routers.
+* [__reaver__](https://github.com/gabrielrcouto/reaver-wps/), a Wifi-Protected Setup (WPS) attack tool.  Reaver includes a scanner "walsh" (or "wash") for detecting WPS-enabled access points. Wifite uses Reaver to scan for and attack WPS-enabled routers.
 
-* [__pyrit__](http://code.google.com/p/pyrit/), a GPU cracker for WPA PSK keys. Wifite uses pyrit (if found) to detect handshakes. In the future, Wifite may include an option to crack WPA handshakes via pyrit.
+* [__pyrit__](https://github.com/JPaulMora/Pyrit/), a GPU cracker for WPA PSK keys. Wifite uses pyrit (if found) to detect handshakes. In the future, Wifite may include an option to crack WPA handshakes via pyrit.
 
 * __tshark__. Comes bundled with [Wireshark](http://www.wireshark.org/), packet sniffing software.
 
-* [__cowpatty__](http://www.willhackforsushi.com/Cowpatty.html), a WPA PSK key cracker. Wifite uses cowpatty (if found) to detect handshakes.
+* [__cowpatty__](https://github.com/roobixx/cowpatty), a WPA PSK key cracker. Wifite uses cowpatty (if found) to detect handshakes.
 
 
 Licensing
