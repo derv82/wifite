@@ -184,6 +184,8 @@ class RunConfiguration:
             self.WPA_DICTIONARY = '/usr/share/wfuzz/wordlist/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
         elif os.path.exists('/usr/share/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'):
             self.WPA_DICTIONARY = '/usr/share/fuzzdb/wordlists-user-passwd/passwds/phpbb.txt'
+        elif os.path.exists('/usr/share/wordlists/fern-wifi/common.txt'):
+            self.WPA_DICTIONARY = '/usr/share/wordlists/fern-wifi/common.txt'
         else:
             self.WPA_DICTIONARY = ''
 
@@ -326,7 +328,7 @@ class RunConfiguration:
         # Remove temp files and folder
         if os.path.exists(self.temp):
             for f in os.listdir(self.temp):
-                os.remove(self.temp + f)
+                os.remove(os.path.join(self.temp, f))
             os.rmdir(self.temp)
         # Disable monitor mode if enabled by us
         self.RUN_ENGINE.disable_monitor_mode()
@@ -1056,6 +1058,7 @@ class RunEngine:
 
         command = ['airodump-ng',
                    '-a',  # only show associated clients
+                   '--write-interval', '1', # Write every second
                    '-w', self.RUN_CONFIG.temp + 'wifite']  # output file
         if channel != 0:
             command.append('-c')
@@ -1065,7 +1068,7 @@ class RunEngine:
         proc = Popen(command, stdout=DN, stderr=DN)
 
         time_started = time.time()
-        print GR + ' [+] ' + G + 'initializing scan' + W + ' (' + G + iface + W + '), updates at 5 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.'
+        print GR + ' [+] ' + G + 'initializing scan' + W + ' (' + G + iface + W + '), updates at 1 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.'
         (targets, clients) = ([], [])
         try:
             deauth_sent = 0.0
@@ -1188,7 +1191,7 @@ class RunEngine:
                         wps_check_targets(targets, self.RUN_CONFIG.temp + 'wifite-01.cap', verbose=False)
 
                     os.system('clear')
-                    print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + W + '), updates at 5 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.\n'
+                    print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + W + '), updates at 1 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.\n'
                     print "   NUM ESSID                 %sCH  ENCR  POWER  WPS?  CLIENT" % (
                     'BSSID              ' if self.RUN_CONFIG.SHOW_MAC_IN_SCAN else '')
                     print '   --- --------------------  %s--  ----  -----  ----  ------' % (
@@ -1809,17 +1812,16 @@ def wps_check_targets(targets, cap_file, verbose=True):
         stdout.flush()
 
     cmd = [program_name,
-           '-f', cap_file,
-           '-C']  # ignore Frame Check Sum errors
+           '-f', cap_file]  # ignore Frame Check Sum errors
     proc_walsh = Popen(cmd, stdout=PIPE, stderr=DN)
     proc_walsh.wait()
-    for line in proc_walsh.communicate()[0].split('\n'):
-        if line.strip() == '' or line.startswith('Scanning for'): continue
-        bssid = line.split(' ')[0]
-
-        for t in targets:
-            if t.bssid.lower() == bssid.lower():
-                t.wps = True
+    walsh_stdout, _ = proc_walsh.communicate()
+    bssid_regex = re.compile("([A-F0-9\:]{17})", re.IGNORECASE)
+    bssids = [bssid.upper() for bssid in bssid_regex.findall(walsh_stdout)]
+    for t in targets:
+        if t.bssid.upper() in bssids:
+            t.wps = True
+        t.wps = t.bssid.upper() in bssids
     if verbose:
         print 'done'
     removed = 0
@@ -1936,11 +1938,11 @@ def get_mac_address(iface):
     proc = Popen(['ifconfig', iface], stdout=PIPE, stderr=DN)
     proc.wait()
     mac = ''
-    first_line = proc.communicate()[0].split('\n')[0]
-    for word in first_line.split(' '):
-        if word != '': mac = word
-    if mac.find('-') != -1: mac = mac.replace('-', ':')
-    if len(mac) > 17: mac = mac[0:17]
+    output = proc.communicate()[0]
+    mac_regex = ('[a-zA-Z0-9]{2}-' * 6)[:-1]
+    match = re.search(' (%s)' % mac_regex, output)
+    if match:
+        mac = match.groups()[0].replace('-', ':')
     return mac
 
 
@@ -2021,6 +2023,7 @@ def get_essid_from_cap(bssid, capfile):
     cmd = ['tshark',
            '-r', capfile,
            '-R', 'wlan.fc.type_subtype == 0x05 && wlan.sa == %s' % bssid,
+           '-2', # -R is deprecated and requires -2
            '-n']
     proc = Popen(cmd, stdout=PIPE, stderr=DN)
     proc.wait()
@@ -2048,6 +2051,7 @@ def get_bssid_from_cap(essid, capfile):
         cmd = ['tshark',
                '-r', capfile,
                '-R', 'wlan_mgt.ssid == "%s" && wlan.fc.type_subtype == 0x05' % (essid),
+               '-2', # -R is deprecated and requires -2
                '-n',  # Do not resolve MAC vendor names
                '-T', 'fields',  # Only display certain fields
                '-e', 'wlan.sa']  # souce MAC address
@@ -2059,6 +2063,7 @@ def get_bssid_from_cap(essid, capfile):
     cmd = ['tshark',
            '-r', capfile,
            '-R', 'eapol',
+           '-2', # -R is deprecated and requires -2
            '-n']
     proc = Popen(cmd, stdout=PIPE, stderr=DN)
     proc.wait()
@@ -2186,7 +2191,9 @@ class WPAAttack(Attack):
             cmd = ['airodump-ng',
                    '-w', self.RUN_CONFIG.temp + 'wpa',
                    '-c', self.target.channel,
-                   '--bssid', self.target.bssid, self.iface]
+                   '--write-interval', '1',
+                   '--bssid', self.target.bssid,
+                   self.iface]
             proc_read = Popen(cmd, stdout=DN, stderr=DN)
 
             # Setting deauthentication process here to avoid errors later on
@@ -2341,6 +2348,7 @@ class WPAAttack(Attack):
             cmd = ['tshark',
                    '-r', capfile,  # Input file
                    '-R', 'eapol',  # Filter (only EAPOL packets)
+                   '-2', # -R is deprecated and requires -2
                    '-n']  # Do not resolve names (MAC vendors)
             proc = Popen(cmd, stdout=PIPE, stderr=DN)
             proc.wait()
@@ -2470,8 +2478,7 @@ class WPAAttack(Attack):
 
             else:
                 # If Pyrit says it's good or workable, it's a valid handshake.
-                if hit_essid and (line.find(', good, ') != -1 or \
-                                              line.find(', workable, ') != -1):
+                if hit_essid and (line.find(', good, ') != -1 or line.find(', good*, ') != -1 or line.find(', workable, ') != -1):
                     return True
         return False
 
@@ -2541,6 +2548,7 @@ class WPAAttack(Attack):
             cmd = ['tshark',
                    '-r', capfile,  # input file
                    '-R', 'eapol || wlan_mgt.tag.interpretation',  # filter
+                   '-2', # -R is deprecated and requires -2
                    '-w', capfile + '.temp']  # output file
             proc_strip = call(cmd, stdout=DN, stderr=DN)
 
@@ -2712,6 +2720,7 @@ class WEPAttack(Attack):
         cmd_airodump = ['airodump-ng',
                         '-w', self.RUN_CONFIG.temp + 'wep',  # Output file name (wep-01.cap, wep-01.csv)
                         '-c', self.target.channel,  # Wireless channel
+                        '--write-interval', '1',
                         '--bssid', self.target.bssid,
                         self.iface]
         proc_airodump = Popen(cmd_airodump, stdout=DN, stderr=DN)
@@ -2761,7 +2770,7 @@ class WEPAttack(Attack):
                 if cmd == '': continue
                 if proc_aireplay != None:
                     send_interrupt(proc_aireplay)
-                proc_aireplay = Popen(cmd, stdout=DN, stderr=DN)
+                proc_aireplay = Popen(cmd, stdout=PIPE, stderr=PIPE)
 
                 print '\r %s attacking "%s" via' % (
                 GR + sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT) + W, G + self.target.ssid + W),
@@ -2793,14 +2802,13 @@ class WEPAttack(Attack):
                 time_started = time.time()
                 while time.time() - time_started < self.RUN_CONFIG.WEP_TIMEOUT:
                     # time.sleep(5)
-                    for time_count in xrange(0, 6):
-                        if self.RUN_CONFIG.WEP_TIMEOUT == -1:
-                            current_hms = "[endless]"
-                        else:
-                            current_hms = sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT - (time.time() - time_started))
-                        print "\r %s\r" % (GR + current_hms + W),
-                        stdout.flush()
-                        time.sleep(1)
+                    if self.RUN_CONFIG.WEP_TIMEOUT == -1:
+                        current_hms = "[endless]"
+                    else:
+                        current_hms = sec_to_hms(self.RUN_CONFIG.WEP_TIMEOUT - (time.time() - time_started))
+                    print "\r %s\r" % (GR + current_hms + W),
+                    stdout.flush()
+                    time.sleep(1)
 
                     # Calculates total seconds remaining
 
@@ -2810,7 +2818,7 @@ class WEPAttack(Attack):
                         ivs = int(csv[0].data)
                         print "\r                                                   ",
                         print "\r %s captured %s%d%s ivs @ %s%d%s iv/sec" % \
-                              (GR + current_hms + W, G, total_ivs + ivs, W, G, (ivs - last_ivs) / 5, W),
+                              (GR + current_hms + W, G, total_ivs + ivs, W, G, (ivs - last_ivs), W),
 
                         if ivs - last_ivs == 0 and time.time() - last_deauth > 30:
                             print "\r %s deauthing to generate packets..." % (GR + current_hms + W),
@@ -2878,6 +2886,7 @@ class WEPAttack(Attack):
                     # At this point, aireplay has stopped
                     if attack_num != 1 and attack_num != 2:
                         print '\r %s attack failed: %saireplay-ng exited unexpectedly%s' % (R + current_hms, O, W)
+                        (sout, serr) = proc_aireplay.communicate()
                         break  # Break out of attack's While loop
 
                     # Check for a .XOR file (we expect one when doing chopchop/fragmentation
@@ -2925,13 +2934,13 @@ class WEPAttack(Attack):
 
                 # After the attacks, if we are already cracking, wait for the key to be found!
                 while started_cracking:  # ivs > WEP_CRACK_AT_IVS:
-                    time.sleep(5)
+                    time.sleep(1)
                     # Check number of IVs captured
                     csv = self.RUN_CONFIG.RUN_ENGINE.parse_csv(self.RUN_CONFIG.temp + 'wep-01.csv')[0]
                     if len(csv) > 0:
                         ivs = int(csv[0].data)
                         print GR + " [endless]" + W + " captured %s%d%s ivs, iv/sec: %s%d%s  \r" % \
-                                                      (G, total_ivs + ivs, W, G, (ivs - last_ivs) / 5, W),
+                                                      (G, total_ivs + ivs, W, G, (ivs - last_ivs), W),
                         last_ivs = ivs
                         stdout.flush()
 
@@ -3379,9 +3388,11 @@ class WPSAttack(Attack):
                '-i', self.iface,
                '-b', self.target.bssid,
                '-o', self.RUN_CONFIG.temp + 'out.out',  # Dump output to file to be monitored
-               '-a',  # auto-detect best options, auto-resumes sessions, doesn't require input!
+
+               # Now that -a is gone, we can't resume sessions arbitrarily.
+               # TODO: Save session to a file, maybe ~/.wifite/
+               '--session', '/dev/null',
                '-c', self.target.channel,
-               # '--ignore-locks',
                '-vv']  # verbose output
         proc = Popen(cmd, stdout=DN, stderr=DN)
 
