@@ -162,7 +162,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 87;
+        self.REVISION = 88;
         self.PRINTED_SCANNING = False
 
         self.TX_POWER = 0  # Transmit power for wireless interface, 0 uses default power
