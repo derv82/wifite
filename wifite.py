@@ -846,6 +846,10 @@ class RunEngine:
         """
             Ensures required programs are installed.
         """
+        if not program_exists('macchanger'):
+            print R + ' [!]' + O + ' the program ' + R + 'macchanger' + O + ' is required for anonymizing MAC address' + W
+            print R + '    ' + O + ' run ' + C + 'sudo apt-get install macchanger\n' + W
+        
         airs = ['aircrack-ng', 'airodump-ng', 'aireplay-ng', 'airmon-ng', 'packetforge-ng']
         for air in airs:
             if program_exists(air): continue
