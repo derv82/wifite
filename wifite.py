@@ -892,7 +892,6 @@ class RunEngine:
         print GR + ' [+]' + W + ' enabling monitor mode on %s...' % (G + iface + W),
         stdout.flush()
         call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
-        print 'done'
         self.RUN_CONFIG.WIRELESS_IFACE = ''  # remove this reference as we've started its monitoring counterpart
         self.RUN_CONFIG.IFACE_TO_TAKE_DOWN = self.get_iface()
         if self.RUN_CONFIG.TX_POWER > 0:
@@ -911,7 +910,6 @@ class RunEngine:
         print GR + ' [+]' + W + ' disabling monitor mode on %s...' % (G + self.RUN_CONFIG.IFACE_TO_TAKE_DOWN + W),
         stdout.flush()
         call(['airmon-ng', 'stop', self.RUN_CONFIG.IFACE_TO_TAKE_DOWN], stdout=DN, stderr=DN)
-        print 'done'
 
     def rtl8187_fix(self, iface):
         """
