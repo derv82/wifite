@@ -229,7 +229,8 @@ class RunConfiguration:
         self.TARGET_CHANNEL = 0  # User-defined channel to scan on
         self.TARGET_ESSID = ''  # User-defined ESSID of specific target to attack
         self.TARGET_BSSID = ''  # User-defined BSSID of specific target to attack
-        self.IFACE_TO_TAKE_DOWN = ''  # Interface that wifite puts into monitor mode
+        self.IFACE_MONITOR_MODE = ''  # Interface that wifite puts into monitor mode
+        self.MAC_MONITOR_MODE = ''  # MAC of interface that wifite puts into monitor mode
         # It's our job to put it out of monitor mode after the attacks
         self.ORIGINAL_IFACE_MAC = ('', '')  # Original interface name[0] and MAC address[1] (before spoofing)
         self.DO_NOT_CHANGE_MAC = True  # Flag for disabling MAC anonymizer
@@ -390,7 +391,6 @@ class RunConfiguration:
                     print GR + ' [+]' + W + ' channel set to %s' % (G + str(self.TARGET_CHANNEL) + W)
             if options.mac_anon:
                 print GR + ' [+]' + W + ' mac address anonymizing ' + G + 'enabled' + W
-                print O + '      not: only works if device is not already in monitor mode!' + W
                 self.DO_NOT_CHANGE_MAC = False
             if options.interface:
                 self.WIRELESS_IFACE = options.interface
@@ -889,7 +889,7 @@ class RunEngine:
             be anonymized if they're already in monitor mode.
             Uses airmon-ng to put a device into Monitor Mode.
             Then uses the get_iface() method to retrieve the new interface's name.
-            Sets global variable IFACE_TO_TAKE_DOWN as well.
+            Sets global variable IFACE_MONITOR_MODE as well.
             Returns the name of the interface in monitor mode.
         """
         mac_anonymize(iface)
@@ -897,23 +897,22 @@ class RunEngine:
         stdout.flush()
         call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
         self.RUN_CONFIG.WIRELESS_IFACE = ''  # remove this reference as we've started its monitoring counterpart
-        self.RUN_CONFIG.IFACE_TO_TAKE_DOWN = self.get_iface()
+        self.RUN_CONFIG.IFACE_MONITOR_MODE = self.get_iface()
         if self.RUN_CONFIG.TX_POWER > 0:
             print GR + ' [+]' + W + ' setting Tx power to %s%s%s...' % (G, self.RUN_CONFIG.TX_POWER, W),
             call(['iw', 'reg', 'set', 'BO'], stdout=OUTLOG, stderr=ERRLOG)
             call(['iwconfig', iface, 'txpower', self.RUN_CONFIG.TX_POWER], stdout=OUTLOG, stderr=ERRLOG)
-            print 'done'
-        return self.RUN_CONFIG.IFACE_TO_TAKE_DOWN
+        return self.RUN_CONFIG.IFACE_MONITOR_MODE
 
     def disable_monitor_mode(self):
         """
             The program may have enabled monitor mode on a wireless interface.
             We want to disable this before we exit, so we will do that.
         """
-        if self.RUN_CONFIG.IFACE_TO_TAKE_DOWN == '': return
-        print GR + ' [+]' + W + ' disabling monitor mode on %s...' % (G + self.RUN_CONFIG.IFACE_TO_TAKE_DOWN + W),
+        if self.RUN_CONFIG.IFACE_MONITOR_MODE == '': return
+        print GR + ' [+]' + W + ' disabling monitor mode on %s...' % (G + self.RUN_CONFIG.IFACE_MONITOR_MODE + W),
         stdout.flush()
-        call(['airmon-ng', 'stop', self.RUN_CONFIG.IFACE_TO_TAKE_DOWN], stdout=DN, stderr=DN)
+        call(['airmon-ng', 'stop', self.RUN_CONFIG.IFACE_MONITOR_MODE], stdout=DN, stderr=DN)
 
     def rtl8187_fix(self, iface):
         """
