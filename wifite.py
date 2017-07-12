@@ -234,6 +234,7 @@ class RunConfiguration:
         # It's our job to put it out of monitor mode after the attacks
         self.ORIGINAL_IFACE_MAC = ('', '')  # Original interface name[0] and MAC address[1] (before spoofing)
         self.DO_NOT_CHANGE_MAC = True  # Flag for disabling MAC anonymizer
+        self.DO_NOT_KILL_NETWORK = True  # Flag for killing network PIDs which may interfere with monitor mode
         self.SEND_DEAUTHS = True # Flag for deauthing clients while scanning for acces points
         self.TARGETS_REMAINING = 0  # Number of access points remaining to attack
         self.WPA_CAPS_TO_CRACK = []  # list of .cap files to crack (full of CapFile objects)
@@ -334,8 +335,6 @@ class RunConfiguration:
             os.rmdir(self.temp)
         # Disable monitor mode if enabled by us
         self.RUN_ENGINE.disable_monitor_mode()
-        # Change MAC address back if spoofed
-        mac_change_back()
         print GR + " [+]" + W + " quitting"  # wifite will now exit"
         print ''
         # GTFO
@@ -392,6 +391,9 @@ class RunConfiguration:
             if options.mac_anon:
                 print GR + ' [+]' + W + ' mac address anonymizing ' + G + 'enabled' + W
                 self.DO_NOT_CHANGE_MAC = False
+            if options.kill_network:
+                print GR + ' [+]' + W + ' killing network PIDs ' + G + 'enabled' + W
+                self.DO_NOT_KILL_NETWORK = False
             if options.interface:
                 self.WIRELESS_IFACE = options.interface
                 print GR + ' [+]' + W + ' set interface :%s' % (G + self.WIRELESS_IFACE + W)
@@ -655,6 +657,9 @@ class RunConfiguration:
         global_group.add_argument('--mac', help='Anonymize MAC address.', action='store_true', default=False,
                                   dest='mac_anon')
         global_group.add_argument('-mac', help=argparse.SUPPRESS, action='store_true', default=False, dest='mac_anon')
+        global_group.add_argument('--killnetwork', help='Kill network PIDs.', action='store_true', default=False,
+                                  dest='kill_network')
+        global_group.add_argument('-killnetwork', help=argparse.SUPPRESS, action='store_true', default=False, dest='kill_network')
         global_group.add_argument('--mon-iface', help='Interface already in monitor mode.', action='store',
                                   dest='monitor_interface')
         global_group.add_argument('-c', help='Channel to scan for targets.', action='store', dest='channel')
@@ -882,6 +887,76 @@ class RunEngine:
             printed = True
             print R + ' [!]' + O + ' the program %s is not required, but is recommended%s' % (R + rec + O, W)
         if printed: print ''
+        
+    def killProcess(self, processId):
+        os.system("kill " + str(processId))
+
+    def airmonCheckKill(self):
+        global RUN_CONFIG
+        if RUN_CONFIG.DO_NOT_KILL_NETWORK: return
+        process = commands.getstatusoutput("airmon-ng check")
+        status = process[0]
+        output = process[1]
+
+        if(status == 0):
+            for line in output.splitlines():
+                splitedLines = line.split()
+                if(len(splitedLines) >= 2):
+                    prefix = str(splitedLines[0])
+                    if(prefix.isdigit()):
+                        pid = int(prefix)
+                        self.killProcess(pid)
+                        
+    def restartNetworkManager(self):
+        global RUN_CONFIG
+        #if RUN_CONFIG.DO_NOT_CHANGE_MAC: return
+        if RUN_CONFIG.DO_NOT_KILL_NETWORK: return
+        print GR + " [+]" + W + " restarting network-manager service"
+        commands.getoutput("ifconfig eth0 down")
+        commands.getoutput("service network-manager restart")
+        commands.getoutput("ifconfig eth0 up")
+
+    def get_mac_address(self, iface):
+        """
+            Returns MAC address of "iface".
+        """
+        words = commands.getoutput("macchanger -s " + iface).split()
+        return words[ words.index("Permanent") + 2 ]
+        
+    
+    def mac_anonymize(self, iface):
+        """
+            Changes MAC address of 'iface' to a random MAC.
+            Only randomizes the last 6 digits of the MAC, so the vender says the same.
+            Stores old MAC address and the interface in ORIGINAL_IFACE_MAC
+        """
+        global RUN_CONFIG
+        if RUN_CONFIG.DO_NOT_CHANGE_MAC: return
+        if not program_exists('ifconfig'): return
+
+        # Store permanent MAC
+        words = commands.getoutput("macchanger -s " + iface).split()
+        old_mac = words[ words.index("Permanent") + 2 ]
+        RUN_CONFIG.ORIGINAL_IFACE_MAC = (iface, old_mac)
+    
+        # Kill conflicting processes
+        self.airmonCheckKill()
+    
+        # Take interface down
+        call(['ifconfig', iface, 'down'])
+    
+        # Change MAC of interface
+        words = commands.getoutput("macchanger -A " + iface).split()
+        new_mac = words[ words.index("New") + 2 ]
+        RUN_CONFIG.MAC_MONITOR_MODE = new_mac
+
+        print GR + " [+]" + W + " changing %s's MAC from %s to %s...\n" % (G + iface + W, G + old_mac + W, O + new_mac + W),
+        stdout.flush()
+
+        # Bring interface up
+        call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
+        #print 'done'
+
 
     def enable_monitor_mode(self, iface):
         """
@@ -889,15 +964,18 @@ class RunEngine:
             be anonymized if they're already in monitor mode.
             Uses airmon-ng to put a device into Monitor Mode.
             Then uses the get_iface() method to retrieve the new interface's name.
+            Anonymizes MAC using macchanger -A iface.
             Sets global variable IFACE_MONITOR_MODE as well.
             Returns the name of the interface in monitor mode.
         """
-        mac_anonymize(iface)
-        print GR + ' [+]' + W + ' enabling monitor mode on %s...' % (G + iface + W),
+        print GR + ' [+]' + W + ' enabling monitor mode on %s...\n' % (G + iface + W),
         stdout.flush()
         call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
         self.RUN_CONFIG.WIRELESS_IFACE = ''  # remove this reference as we've started its monitoring counterpart
         self.RUN_CONFIG.IFACE_MONITOR_MODE = self.get_iface()
+        words = commands.getoutput("macchanger -s " + self.get_iface()).split()
+        current_mac = words[ words.index("Current") + 2 ]
+        RUN_CONFIG.MAC_MONITOR_MODE = current_mac
         if self.RUN_CONFIG.TX_POWER > 0:
             print GR + ' [+]' + W + ' setting Tx power to %s%s%s...' % (G, self.RUN_CONFIG.TX_POWER, W),
             call(['iw', 'reg', 'set', 'BO'], stdout=OUTLOG, stderr=ERRLOG)
@@ -910,9 +988,10 @@ class RunEngine:
             We want to disable this before we exit, so we will do that.
         """
         if self.RUN_CONFIG.IFACE_MONITOR_MODE == '': return
-        print GR + ' [+]' + W + ' disabling monitor mode on %s...' % (G + self.RUN_CONFIG.IFACE_MONITOR_MODE + W),
+        print GR + ' [+]' + W + ' disabling monitor mode on %s...\n' % (G + self.RUN_CONFIG.IFACE_MONITOR_MODE + W),
         stdout.flush()
         call(['airmon-ng', 'stop', self.RUN_CONFIG.IFACE_MONITOR_MODE], stdout=DN, stderr=DN)
+        self.restartNetworkManager()
 
     def rtl8187_fix(self, iface):
         """
@@ -1383,10 +1462,11 @@ class RunEngine:
         if self.RUN_CONFIG.MONITOR_IFACE != '':
             iface = self.RUN_CONFIG.MONITOR_IFACE
         else:
-            # The "get_iface" method anonymizes the MAC address (if needed)
-            # and puts the interface into monitor mode.
+            # The "mac_anonymize" method anonymizes the MAC address (if needed)
+            # and the "get_iface" puts the interface into monitor mode.
+            self.mac_anonymize(self.get_iface())
             iface = self.get_iface()
-        self.RUN_CONFIG.THIS_MAC = get_mac_address(iface)  # Store current MAC address
+        self.RUN_CONFIG.THIS_MAC = self.get_mac_address(iface)  # Store current MAC address
 
         (targets, clients) = self.scan(iface=iface, channel=self.RUN_CONFIG.TARGET_CHANNEL)
 
@@ -1931,89 +2011,6 @@ def send_interrupt(process):
         pass  # 'process' is not defined
     except AttributeError:
         pass  # Trying to kill "None"
-
-
-def get_mac_address(iface):
-    """
-        Returns MAC address of "iface".
-    """
-    proc = Popen(['ifconfig', iface], stdout=PIPE, stderr=DN)
-    proc.wait()
-    mac = ''
-    output = proc.communicate()[0]
-    mac_regex = ('[a-zA-Z0-9]{2}-' * 6)[:-1]
-    match = re.search(' (%s)' % mac_regex, output)
-    if match:
-        mac = match.groups()[0].replace('-', ':')
-    return mac
-
-
-def generate_random_mac(old_mac):
-    """
-        Generates a random MAC address.
-        Keeps the same vender (first 6 chars) of the old MAC address (old_mac).
-        Returns string in format old_mac[0:9] + :XX:XX:XX where X is random hex
-    """
-    random.seed()
-    new_mac = old_mac[:8].lower().replace('-', ':')
-    for i in xrange(0, 6):
-        if i % 2 == 0: new_mac += ':'
-        new_mac += '0123456789abcdef'[random.randint(0, 15)]
-
-    # Prevent generating the same MAC address via recursion.
-    if new_mac == old_mac:
-        new_mac = generate_random_mac(old_mac)
-    return new_mac
-
-
-def mac_anonymize(iface):
-    """
-        Changes MAC address of 'iface' to a random MAC.
-        Only randomizes the last 6 digits of the MAC, so the vender says the same.
-        Stores old MAC address and the interface in ORIGINAL_IFACE_MAC
-    """
-    global RUN_CONFIG
-    if RUN_CONFIG.DO_NOT_CHANGE_MAC: return
-    if not program_exists('ifconfig'): return
-
-    # Store old (current) MAC address
-    proc = Popen(['ifconfig', iface], stdout=PIPE, stderr=DN)
-    proc.wait()
-    for word in proc.communicate()[0].split('\n')[0].split(' '):
-        if word != '': old_mac = word
-    RUN_CONFIG.ORIGINAL_IFACE_MAC = (iface, old_mac)
-
-    new_mac = generate_random_mac(old_mac)
-
-    call(['ifconfig', iface, 'down'])
-
-    print GR + " [+]" + W + " changing %s's MAC from %s to %s..." % (G + iface + W, G + old_mac + W, O + new_mac + W),
-    stdout.flush()
-
-    proc = Popen(['ifconfig', iface, 'hw', 'ether', new_mac], stdout=PIPE, stderr=DN)
-    proc.wait()
-    call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
-    print 'done'
-
-
-def mac_change_back():
-    """
-        Changes MAC address back to what it was before attacks began.
-    """
-    global RUN_CONFIG
-    iface = RUN_CONFIG.ORIGINAL_IFACE_MAC[0]
-    old_mac = RUN_CONFIG.ORIGINAL_IFACE_MAC[1]
-    if iface == '' or old_mac == '': return
-
-    print GR + " [+]" + W + " changing %s's mac back to %s..." % (G + iface + W, G + old_mac + W),
-    stdout.flush()
-
-    call(['ifconfig', iface, 'down'], stdout=DN, stderr=DN)
-    proc = Popen(['ifconfig', iface, 'hw', 'ether', old_mac], stdout=PIPE, stderr=DN)
-    proc.wait()
-    call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
-    print "done"
-
 
 def get_essid_from_cap(bssid, capfile):
     """
