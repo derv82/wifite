@@ -1272,7 +1272,7 @@ class RunEngine:
                         wps_check_targets(targets, self.RUN_CONFIG.temp + 'wifite-01.cap', verbose=False)
 
                     os.system('clear')
-                    print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + W + '), updates at 1 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.\n'
+                    print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + ' - ' + RUN_CONFIG.MAC_MONITOR_MODE + W + '), updates at 1 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.\n'
                     print "   NUM ESSID                 %sCH  ENCR  POWER  WPS?  CLIENT" % (
                     'BSSID              ' if self.RUN_CONFIG.SHOW_MAC_IN_SCAN else '')
                     print '   --- --------------------  %s--  ----  -----  ----  ------' % (
