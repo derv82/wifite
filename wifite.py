@@ -167,6 +167,10 @@ class RunConfiguration:
         self.PRINTED_SCANNING = False
 
         self.TX_POWER = 0  # Transmit power for wireless interface, 0 uses default power
+        self.NEW_CC = 'US' # New iw reg country code
+        self.NEW_TX_POWER = 0  # New transmit power for wireless interface
+        self.ORIG_CC = '00'  # Original iw reg country code
+        self.ORIG_TX_POWER = 0  # Original transmit power for wireless interface
 
         # WPA variables
         self.WPA_DISABLE = False  # Flag to skip WPA handshake capture
@@ -956,7 +960,28 @@ class RunEngine:
         # Bring interface up
         call(['ifconfig', iface, 'up'], stdout=DN, stderr=DN)
         #print 'done'
+    
+    def get_iw(self, iface):
+        # Store original country code and tx power        
+	words = commands.getoutput("iw reg get").split()
+        cc = words[ words.index("country") + 1 ]
+        self.RUN_CONFIG.ORIG_CC = cc.translate(None, ':')
+        words = commands.getoutput("iw dev " + iface + " info").split()
+        pwr = words[ words.index("txpower") + 1 ]
+        head, sep, tail = pwr.partition('.')
+        self.RUN_CONFIG.ORIG_TX_POWER = int(head)
 
+    def set_iw(self, iface, country_code, tx_power):
+        if self.RUN_CONFIG.TX_POWER > 0:
+            print GR + ' [+]' + W + ' setting COUNTRY CODE to %s%s%s...' % (G, country_code, W)
+            print GR + ' [+]' + W + ' setting TX POWER to %s%s%s...' % (G, str(tx_power), W)
+            call(['ifconfig', iface, 'down'])
+            call(['iw', 'reg', 'set', country_code], stdout=OUTLOG, stderr=ERRLOG)
+            call(['iwconfig', iface, 'txpower ' + str(tx_power)], stdout=OUTLOG, stderr=ERRLOG)
+            call(['ifconfig', iface, 'up'])
+            self.RUN_CONFIG.NEW_TX_POWER = tx_power
+        else:
+            return
 
     def enable_monitor_mode(self, iface):
         """
@@ -970,16 +995,14 @@ class RunEngine:
         """
         print GR + ' [+]' + W + ' enabling monitor mode on %s...\n' % (G + iface + W),
         stdout.flush()
+        self.get_iw(iface)
+        self.set_iw(iface, self.RUN_CONFIG.NEW_CC, self.RUN_CONFIG.TX_POWER)
         call(['airmon-ng', 'start', iface], stdout=DN, stderr=DN)
         self.RUN_CONFIG.WIRELESS_IFACE = ''  # remove this reference as we've started its monitoring counterpart
         self.RUN_CONFIG.IFACE_MONITOR_MODE = self.get_iface()
         words = commands.getoutput("macchanger -s " + self.get_iface()).split()
         current_mac = words[ words.index("Current") + 2 ]
         RUN_CONFIG.MAC_MONITOR_MODE = current_mac
-        if self.RUN_CONFIG.TX_POWER > 0:
-            print GR + ' [+]' + W + ' setting Tx power to %s%s%s...' % (G, self.RUN_CONFIG.TX_POWER, W),
-            call(['iw', 'reg', 'set', 'BO'], stdout=OUTLOG, stderr=ERRLOG)
-            call(['iwconfig', iface, 'txpower', self.RUN_CONFIG.TX_POWER], stdout=OUTLOG, stderr=ERRLOG)
         return self.RUN_CONFIG.IFACE_MONITOR_MODE
 
     def disable_monitor_mode(self):
@@ -990,6 +1013,7 @@ class RunEngine:
         if self.RUN_CONFIG.IFACE_MONITOR_MODE == '': return
         print GR + ' [+]' + W + ' disabling monitor mode on %s...\n' % (G + self.RUN_CONFIG.IFACE_MONITOR_MODE + W),
         stdout.flush()
+        self.set_iw(self.RUN_CONFIG.IFACE_MONITOR_MODE, self.RUN_CONFIG.ORIG_CC, self.RUN_CONFIG.ORIG_TX_POWER)
         call(['airmon-ng', 'stop', self.RUN_CONFIG.IFACE_MONITOR_MODE], stdout=DN, stderr=DN)
         self.restartNetworkManager()
 
@@ -1149,7 +1173,10 @@ class RunEngine:
         proc = Popen(command, stdout=DN, stderr=DN)
 
         time_started = time.time()
-        print GR + ' [+] ' + G + 'initializing scan' + W + ' (' + G + iface + W + '), updates at 1 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.'
+        if self.RUN_CONFIG.TX_POWER > 0:
+            print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + ' - ' + RUN_CONFIG.MAC_MONITOR_MODE + ' - TXPOWER ' + str(self.RUN_CONFIG.NEW_TX_POWER) + W + '), ' + G + 'CTRL+C' + W + ' when ready.\n'
+        else:
+            print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + ' - ' + RUN_CONFIG.MAC_MONITOR_MODE + ' - TXPOWER ' + str(self.RUN_CONFIG.ORIG_TX_POWER) + W + '), ' + G + 'CTRL+C' + W + ' when ready.\n'
         (targets, clients) = ([], [])
         try:
             deauth_sent = 0.0
@@ -1272,7 +1299,10 @@ class RunEngine:
                         wps_check_targets(targets, self.RUN_CONFIG.temp + 'wifite-01.cap', verbose=False)
 
                     os.system('clear')
-                    print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + ' - ' + RUN_CONFIG.MAC_MONITOR_MODE + W + '), updates at 1 sec intervals, ' + G + 'CTRL+C' + W + ' when ready.\n'
+                    if self.RUN_CONFIG.TX_POWER > 0:
+                        print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + ' - ' + RUN_CONFIG.MAC_MONITOR_MODE + ' - TXPOWER ' + str(self.RUN_CONFIG.NEW_TX_POWER) + W + '), ' + G + 'CTRL+C' + W + ' when ready.\n'
+                    else:
+                        print GR + '\n [+] ' + G + 'scanning' + W + ' (' + G + iface + ' - ' + RUN_CONFIG.MAC_MONITOR_MODE + ' - TXPOWER ' + str(self.RUN_CONFIG.ORIG_TX_POWER) + W + '), ' + G + 'CTRL+C' + W + ' when ready.\n'
                     print "   NUM ESSID                 %sCH  ENCR  POWER  WPS?  CLIENT" % (
                     'BSSID              ' if self.RUN_CONFIG.SHOW_MAC_IN_SCAN else '')
                     print '   --- --------------------  %s--  ----  -----  ----  ------' % (
