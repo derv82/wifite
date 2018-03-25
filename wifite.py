@@ -782,6 +782,14 @@ class RunEngine:
             print R + ' [!]' + O + ' airmon-ng requires the program %s\n' % (R + 'iw' + W)
             self.RUN_CONFIG.exit_gracefully(1)
 
+        if not program_exists('iwconfig'):
+            print R + ' [!]' + O + ' wifite requires the program %s\n' % (R + 'iwconfig' + W)
+            self.RUN_CONFIG.exit_gracefully(1)
+
+        if not program_exists('ifconfig'):
+            print R + ' [!]' + O + ' wifite requires the program %s\n' % (R + 'ifconfig' + W)
+            self.RUN_CONFIG.exit_gracefully(1)
+
         printed = False
         # Check reaver
         if not program_exists('reaver'):
@@ -789,13 +797,15 @@ class RunEngine:
             print R + ' [!]' + O + ' the program ' + R + 'reaver' + O + ' is required for WPS attacks' + W
             print R + '    ' + O + '   available at ' + C + 'http://code.google.com/p/reaver-wps' + W
             self.RUN_CONFIG.WPS_DISABLE = True
-        elif not program_exists('tshark'):
+
+        if not program_exists('tshark'):
             printed = True
             print R + ' [!]' + O + ' the program ' + R + 'tshark' + O + ' was not found' + W
             print R + ' [!]' + O + ' please install tshark: https://www.wireshark.org/#download' + W
+            self.RUN_CONFIG.WPS_DISABLE = True
 
         # Check handshake-checking apps
-        recs = ['tshark', 'pyrit', 'cowpatty']
+        recs = ['pyrit', 'cowpatty']
         for rec in recs:
             if program_exists(rec): continue
             printed = True
