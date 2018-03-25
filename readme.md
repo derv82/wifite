@@ -55,9 +55,9 @@ Suggested Programs
 
 _`*` indicates program is not included in [Backtrack 5 R1](http://www.backtrack-linux.org/)_
 
-* `*`[__reaver__](http://code.google.com/p/reaver-wps/), a Wifi-Protected Setup (WPS) attack tool.  Reaver includes a scanner "walsh" (or "wash") for detecting WPS-enabled access points. Wifite uses Reaver to scan for and attack WPS-enabled routers.
+* `*`[__reaver__](https://github.com/t6x/reaver-wps-fork-t6x), a Wifi-Protected Setup (WPS) attack tool.  Reaver includes a scanner "walsh" (or "wash") for detecting WPS-enabled access points. Wifite uses Reaver to scan for and attack WPS-enabled routers.
 
-* `*`[__pyrit__](http://code.google.com/p/pyrit/), a GPU cracker for WPA PSK keys. Wifite uses pyrit (if found) to detect handshakes. In the future, Wifite may include an option to crack WPA handshakes via pyrit.
+* `*`[__pyrit__](https://github.com/JPaulMora/Pyrit), a GPU cracker for WPA PSK keys. Wifite uses pyrit (if found) to detect handshakes. In the future, Wifite may include an option to crack WPA handshakes via pyrit.
 
 * __tshark__. Comes bundled with [Wireshark](http://www.wireshark.org/), packet sniffing software.
 
