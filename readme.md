@@ -1,7 +1,7 @@
-THIS PROJECT IS IN LIFE SUPPORT MODE
+THIS PROJECT IS IN LIFE-SUPPORT MODE
 ------------------------------------
 
-This repo tracks the old version of Wifite (*v1*) which does not receive frequent updates and has many bugs (check out the *Isuses* tab).
+This repo tracks the old version of Wifite (*v1*) which does not receive frequent updates and has many bugs (check out the *Isuses* tab!).
 
 There's a new version of Wifite (*Wifite2*) available at [https://github.com/derv82/wifite2](https://github.com/derv82/wifite2). *Wifite2* has more features, bug fixes, and reliability.
 
