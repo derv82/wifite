@@ -170,7 +170,7 @@ class RunConfiguration:
         # WPA variables
         self.WPA_DISABLE = False  # Flag to skip WPA handshake capture
         self.WPA_STRIP_HANDSHAKE = True  # Use pyrit or tshark (if applicable) to strip handshake
-        self.WPA_DEAUTH_COUNT = 5  # Count to send deauthentication packets
+        self.WPA_DEAUTH_COUNT = 1  # Count to send deauthentication packets
         self.WPA_DEAUTH_TIMEOUT = 10  # Time to wait between deauthentication bursts (in seconds)
         self.WPA_ATTACK_TIMEOUT = 500  # Total time to allow for a handshake attack (in seconds)
         self.WPA_HANDSHAKE_DIR = 'hs'  # Directory in which handshakes .cap files are stored
@@ -789,10 +789,10 @@ class RunEngine:
             print R + ' [!]' + O + ' the program ' + R + 'reaver' + O + ' is required for WPS attacks' + W
             print R + '    ' + O + '   available at ' + C + 'http://code.google.com/p/reaver-wps' + W
             self.RUN_CONFIG.WPS_DISABLE = True
-        elif not program_exists('walsh') and not program_exists('wash'):
+        elif not program_exists('tshark'):
             printed = True
-            print R + ' [!]' + O + ' reaver\'s scanning tool ' + R + 'walsh' + O + ' (or ' + R + 'wash' + O + ') was not found' + W
-            print R + ' [!]' + O + ' please re-install reaver or install walsh/wash separately' + W
+            print R + ' [!]' + O + ' the program ' + R + 'tshark' + O + ' was not found' + W
+            print R + ' [!]' + O + ' please install tshark: https://www.wireshark.org/#download' + W
 
         # Check handshake-checking apps
         recs = ['tshark', 'pyrit', 'cowpatty']
@@ -1087,7 +1087,7 @@ class RunEngine:
                 if self.RUN_CONFIG.SEND_DEAUTHS and channel != 0 and time.time() - deauth_sent > 5:
                     deauth_sent = time.time()
                     for t in targets:
-                        if t.ssid == '':
+                        if t.ssid == '' or '\x00' in t.ssid or '\\x00' in t.ssid:
                             print "\r %s deauthing hidden access point (%s)               \r" % \
                                   (GR + sec_to_hms(time.time() - time_started) + W, G + t.bssid + W),
                             stdout.flush()
@@ -1126,12 +1126,9 @@ class RunEngine:
                     for i, target in enumerate(targets):
                         print "   %s%2d%s " % (G, i + 1, W),
                         # SSID
-                        if target.ssid == '':
+                        if target.ssid == '' or '\x00' in target.ssid or '\\x00' in target.ssid:
                             p = O + '(' + target.bssid + ')' + GR + ' ' + W
                             print '%s' % p.ljust(20),
-                        elif ( target.ssid.count('\x00') == len(target.ssid) ):
-                            p = '<Length ' + str(len(target.ssid)) + '>'
-                            print '%s' % C + p.ljust(20) + W,
                         elif len(target.ssid) <= 20:
                             print "%s" % C + target.ssid.ljust(20) + W,
                         else:
@@ -1191,7 +1188,7 @@ class RunEngine:
         except UnboundLocalError:
             pass
 
-        # Use "wash" program to check for WPS compatibility
+        # Use "tshark" program to check for WPS compatibility
         if not self.RUN_CONFIG.WPS_DISABLE:
             wps_check_targets(targets, cap_file)
 
@@ -1220,12 +1217,9 @@ class RunEngine:
         for i, target in enumerate(targets):
             print "   %s%2d%s " % (G, i + 1, W),
             # SSID
-            if target.ssid == '':
+            if target.ssid == '' or '\x00' in target.ssid or '\\x00' in target.ssid:
                 p = O + '(' + target.bssid + ')' + GR + ' ' + W
                 print '%s' % p.ljust(20),
-            elif ( target.ssid.count('\x00') == len(target.ssid) ):
-                p = '<Length ' + str(len(target.ssid)) + '>'
-                print '%s' % C + p.ljust(20) + W,
             elif len(target.ssid) <= 20:
                 print "%s" % C + target.ssid.ljust(20) + W,
             else:
@@ -1695,28 +1689,37 @@ def help():
 
 def wps_check_targets(targets, cap_file, verbose=True):
     """
-        Uses reaver's "walsh" (or wash) program to check access points in cap_file
-        for WPS functionality. Sets "wps" field of targets that match to True.
+        Uses tshark to check access points in cap_file for WPS functionality.
+        Sets "wps" field of targets that match to True.
     """
     global RUN_CONFIG
 
-    if not program_exists('walsh') and not program_exists('wash'):
-        RUN_CONFIG.WPS_DISABLE = True  # Tell 'scan' we were unable to execute walsh
+    if not program_exists('tshark'):
+        RUN_CONFIG.WPS_DISABLE = True  # Tell 'scan' we were unable to execute tshark
         return
-    program_name = 'walsh' if program_exists('walsh') else 'wash'
 
     if len(targets) == 0 or not os.path.exists(cap_file): return
+
     if verbose:
         print GR + ' [+]' + W + ' checking for ' + G + 'WPS compatibility' + W + '...',
         stdout.flush()
 
-    cmd = [program_name,
-           '-f', cap_file]  # ignore Frame Check Sum errors
-    proc_walsh = Popen(cmd, stdout=PIPE, stderr=DN)
-    proc_walsh.wait()
-    walsh_stdout, _ = proc_walsh.communicate()
+    cmd = [
+        'tshark',
+        '-r', cap_file, # Path to cap file
+        '-n', # Don't resolve addresses
+        # Filter WPS broadcast packets
+        '-Y', 'wps.wifi_protected_setup_state && wlan.da == ff:ff:ff:ff:ff:ff',
+        '-T', 'fields', # Only output certain fields
+        '-e', 'wlan.ta', # BSSID
+        '-e', 'wps.ap_setup_locked', # Locked status
+        '-E', 'separator=,' # CSV
+    ]
+    proc_tshark = Popen(cmd, stdout=PIPE, stderr=DN)
+    proc_tshark.wait()
+    tshark_stdout, _ = proc_tshark.communicate()
     bssid_regex = re.compile("([A-F0-9\:]{17})", re.IGNORECASE)
-    bssids = [bssid.upper() for bssid in bssid_regex.findall(walsh_stdout)]
+    bssids = [bssid.upper() for bssid in bssid_regex.findall(tshark_stdout)]
     for t in targets:
         if t.bssid.upper() in bssids:
             t.wps = True
