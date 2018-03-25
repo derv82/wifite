@@ -162,7 +162,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 87;
+        self.REVISION = 88;
         self.PRINTED_SCANNING = False
 
         self.TX_POWER = 0  # Transmit power for wireless interface, 0 uses default power
@@ -453,9 +453,6 @@ class RunConfiguration:
                         print R + ' [!]' + O + ' unable to analyze capture file!' + W
                         print R + ' [!]' + O + ' file not found: ' + R + capfile + '\n' + W
                         self.exit_gracefully(1)
-            if options.update:
-                self.upgrade()
-                exit(0)
             if options.cracked:
                 if len(self.CRACKED_TARGETS) == 0:
                     print R + ' [!]' + O + ' There are no cracked access points saved to ' + R + 'cracked.db\n' + W
@@ -673,9 +670,6 @@ class RunConfiguration:
         global_group.add_argument('--quiet', help='Do not print list of APs during scan.', action='store_true',
                                   dest='quiet')
         global_group.add_argument('-quiet', help=argparse.SUPPRESS, action='store_true', dest='quiet')
-        global_group.add_argument('--update', help='Check and update Wifite.', default=False, action='store_true',
-                                  dest='update')
-        global_group.add_argument('-update', help=argparse.SUPPRESS, default=False, action='store_true', dest='update')
         # set wpa commands
         wpa_group = option_parser.add_argument_group('WPA')
         wpa_group.add_argument('--wpa', help='Only target WPA networks (works with --wps --wep).', default=False,
@@ -764,76 +758,6 @@ class RunConfiguration:
         wps_group.add_argument('-wpsretry', help=argparse.SUPPRESS, action='store', dest='wpsretry')
 
         return option_parser
-
-    def upgrade(self):
-        """
-            Checks for new version, prompts to upgrade, then
-            replaces this script with the latest from the repo
-        """
-        try:
-            print GR + ' [!]' + W + ' upgrading requires an ' + G + 'internet connection' + W
-            print GR + ' [+]' + W + ' checking for latest version...'
-            revision = get_revision()
-            if revision == -1:
-                print R + ' [!]' + O + ' unable to access GitHub' + W
-            elif revision > self.REVISION:
-                print GR + ' [!]' + W + ' a new version is ' + G + 'available!' + W
-                print GR + ' [-]' + W + '   revision:    ' + G + str(revision) + W
-                response = raw_input(GR + ' [+]' + W + ' do you want to upgrade to the latest version? (y/n): ')
-                if not response.lower().startswith('y'):
-                    print GR + ' [-]' + W + ' upgrading ' + O + 'aborted' + W
-                    self.exit_gracefully(0)
-                    return
-                # Download script, replace with this one
-                print GR + ' [+] ' + G + 'downloading' + W + ' update...'
-                try:
-                    sock = urllib.urlopen('https://github.com/derv82/wifite/raw/master/wifite.py')
-                    page = sock.read()
-                except IOError:
-                    page = ''
-                if page == '':
-                    print R + ' [+] ' + O + 'unable to download latest version' + W
-                    self.exit_gracefully(1)
-
-                # Create/save the new script
-                f = open('wifite_new.py', 'w')
-                f.write(page)
-                f.close()
-
-                # The filename of the running script
-                this_file = __file__
-                if this_file.startswith('./'):
-                    this_file = this_file[2:]
-
-                # create/save a shell script that replaces this script with the new one
-                f = open('update_wifite.sh', 'w')
-                f.write('''#!/bin/sh\n
-                           rm -rf ''' + this_file + '''\n
-                           mv wifite_new.py ''' + this_file + '''\n
-                           rm -rf update_wifite.sh\n
-                           chmod +x ''' + this_file + '''\n
-                          ''')
-                f.close()
-
-                # Change permissions on the script
-                returncode = call(['chmod', '+x', 'update_wifite.sh'])
-                if returncode != 0:
-                    print R + ' [!]' + O + ' permission change returned unexpected code: ' + str(returncode) + W
-                    self.exit_gracefully(1)
-                # Run the script
-                returncode = call(['sh', 'update_wifite.sh'])
-                if returncode != 0:
-                    print R + ' [!]' + O + ' upgrade script returned unexpected code: ' + str(returncode) + W
-                    self.exit_gracefully(1)
-
-                print GR + ' [+] ' + G + 'updated!' + W + ' type "./' + this_file + '" to run again'
-
-            else:
-                print GR + ' [-]' + W + ' your copy of wifite is ' + G + 'up to date' + W
-
-        except KeyboardInterrupt:
-            print R + '\n (^C)' + O + ' wifite upgrade interrupted' + W
-        self.exit_gracefully(0)
 
 
 class RunEngine:
@@ -1676,7 +1600,7 @@ def banner(RUN_CONFIG):
     """
     print ''
     print G + "  .;'                     `;,    "
-    print G + " .;'  ,;'             `;,  `;,   " + W + "WiFite v2 (r" + str(RUN_CONFIG.REVISION) + ")"
+    print G + " .;'  ,;'             `;,  `;,   " + W + "WiFite v1 (r" + str(RUN_CONFIG.REVISION) + ")"
     print G + ".;'  ,;'  ,;'     `;,  `;,  `;,  "
     print G + "::   ::   :   " + GR + "( )" + G + "   :   ::   ::  " + GR + "automated wireless auditor"
     print G + "':.  ':.  ':. " + GR + "/_\\" + G + " ,:'  ,:'  ,:'  "
@@ -1684,34 +1608,6 @@ def banner(RUN_CONFIG):
     print G + "  ':.       " + GR + "/_____\\" + G + "      ,:'     "
     print G + "           " + GR + "/       \\" + G + "             "
     print W
-
-
-def get_revision():
-    """
-        Gets latest revision # from the GitHub repository
-        Returns : revision#
-    """
-    irev = -1
-
-    try:
-        sock = urllib.urlopen('https://github.com/derv82/wifite/raw/master/wifite.py')
-        page = sock.read()
-    except IOError:
-        return (-1, '', '')
-
-    # get the revision
-    start = page.find('REVISION = ')
-    stop = page.find(";", start)
-    if start != -1 and stop != -1:
-        start += 11
-        rev = page[start:stop]
-        try:
-            irev = int(rev)
-        except ValueError:
-            rev = rev.split('\n')[0]
-            print R + '[+] invalid revision number: "' + rev + '"'
-
-    return irev
 
 
 def help():
