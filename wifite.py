@@ -2445,7 +2445,8 @@ class WPAAttack(Attack):
                    '-o', capfile + '.temp',
                    'stripLive']
             call(cmd, stdout=DN, stderr=DN)
-            rename(capfile + '.temp', output_file)
+            if os.path.exists(capfile + '.temp'):
+                rename(capfile + '.temp', output_file)
 
         elif program_exists('tshark'):
             # strip results with tshark
