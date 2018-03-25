@@ -960,6 +960,7 @@ class RunEngine:
             self.RUN_CONFIG.exit_gracefully(0)
         elif self.RUN_CONFIG.WIRELESS_IFACE != '' and monitors.count(self.RUN_CONFIG.WIRELESS_IFACE) > 0:
             monitor = monitors[0][:monitors[0].find('\t')]
+            if monitor.startswith('phy'): monitor = monitors[0].split()[1]   # to avoid get monitor name like 'phy*'
             return self.enable_monitor_mode(monitor)
 
         elif len(monitors) == 1:
@@ -977,6 +978,7 @@ class RunEngine:
             ri = raw_input(" [+] select number of device to put into monitor mode (%s1-%d%s): " % (G, len(monitors), W))
         i = int(ri)
         monitor = monitors[i - 1][:monitors[i - 1].find('\t')]
+        if monitor.startswith('phy'): monitor = monitors[i - 1].split()[1] # to avoid get monitor name like 'phy*'
 
         return self.enable_monitor_mode(monitor)
 
