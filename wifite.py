@@ -3022,7 +3022,9 @@ class WEPAttack(Attack):
 
             proc_fakeauth = Popen(cmd, stdout=PIPE, stderr=DN)
             started = time.time()
-            while proc_fakeauth.poll() == None and time.time() - started <= max_wait: pass
+            while proc_fakeauth.poll() == None and time.time() - started <= max_wait:
+                time.sleep(0.1)
+
             if time.time() - started > max_wait:
                 send_interrupt(proc_fakeauth)
                 print R + 'failed' + W,
