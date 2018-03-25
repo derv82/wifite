@@ -1,21 +1,19 @@
-wifite
-======
+THIS PROJECT IS IN LIFE SUPPORT MODE
+------------------------------------
 
-An automated wireless attack tool.
+This repo tracks the old version of Wifite (*v1*) which does not receive frequent updates and has many bugs (check out the *Isuses* tab).
 
+There's a new version of Wifite (*Wifite2*) available at [https://github.com/derv82/wifite2](https://github.com/derv82/wifite2). *Wifite2* has more features, bug fixes, and reliability.
 
-What's New?
------------
-
-The biggest change from version 1 is support for ["reaver"](http://reaver-wps.googlecode.com/), a Wifi-Protected Setup (WPS) attack tool.  Reaver can compromise the PIN and PSK for many routers that have WPS enabled, usually within hours.
-
-Other changes include a complete code re-write with bug fixes and added stability.  Due to problems with the Python Tkinter suite, the GUI has been left out of this latest version.
+*Try the new Wifite2, especially if you're having problems with Wifite v1*
 
 
 About
 -----
 
 _Wifite is for Linux only._
+
+Wifite is an automated wireless attack tool.
 
 Wifite was designed for use with pentesting distributions of Linux, such as [Kali Linux](http://www.kali.org/), [Pentoo](http://www.pentoo.ch/), [BackBox](http://www.backbox.org); any Linux distributions with wireless drivers patched for injection. The script appears to also operate with Ubuntu 11/10, Debian 6, and Fedora 16.
 
