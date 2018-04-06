@@ -162,7 +162,7 @@ class RunConfiguration:
     """
 
     def __init__(self):
-        self.REVISION = 88;
+        self.REVISION = 89;
         self.PRINTED_SCANNING = False
 
         self.TX_POWER = 0  # Transmit power for wireless interface, 0 uses default power
@@ -1604,7 +1604,7 @@ def banner(RUN_CONFIG):
     """
     print ''
     print G + "  .;'                     `;,    "
-    print G + " .;'  ,;'             `;,  `;,   " + W + "WiFite v1 (r" + str(RUN_CONFIG.REVISION) + ")"
+    print G + " .;'  ,;'             `;,  `;,   " + W + "WiFite v2.0 (r" + str(RUN_CONFIG.REVISION) + ")"
     print G + ".;'  ,;'  ,;'     `;,  `;,  `;,  "
     print G + "::   ::   :   " + GR + "( )" + G + "   :   ::   ::  " + GR + "automated wireless auditor"
     print G + "':.  ':.  ':. " + GR + "/_\\" + G + " ,:'  ,:'  ,:'  "
