@@ -831,7 +831,7 @@ class RunEngine:
         if self.RUN_CONFIG.TX_POWER > 0:
             print GR + ' [+]' + W + ' setting Tx power to %s%s%s...' % (G, self.RUN_CONFIG.TX_POWER, W),
             call(['iw', 'reg', 'set', 'BO'], stdout=OUTLOG, stderr=ERRLOG)
-            call(['iwconfig', iface, 'txpower', self.RUN_CONFIG.TX_POWER], stdout=OUTLOG, stderr=ERRLOG)
+            call(['iwconfig', iface, 'txpower', str(self.RUN_CONFIG.TX_POWER)], stdout=OUTLOG, stderr=ERRLOG)
             print 'done'
         return self.RUN_CONFIG.IFACE_TO_TAKE_DOWN
 
