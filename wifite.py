@@ -2459,7 +2459,11 @@ class WPAAttack(Attack):
                    'stripLive']
             call(cmd, stdout=DN, stderr=DN)
             if os.path.exists(capfile + '.temp'):
-                rename(capfile + '.temp', output_file)
+
+                ###robsouth84 update###
+                ###orig###rename(capfile + '.temp', output_file)
+                copy(output_file, capfile + '.temp')
+
 
         elif program_exists('tshark'):
             # strip results with tshark
@@ -2470,7 +2474,9 @@ class WPAAttack(Attack):
                    '-w', capfile + '.temp']  # output file
             proc_strip = call(cmd, stdout=DN, stderr=DN)
 
-            rename(capfile + '.temp', output_file)
+            ###robsouth84 update###
+            ###orig###rename(capfile + '.temp', output_file)
+            copy(output_file, capfile + '.temp')
 
         else:
             print R + " [!]" + O + " unable to strip .cap file: neither pyrit nor tshark were found" + W
