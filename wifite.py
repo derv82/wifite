@@ -433,7 +433,7 @@ class RunConfiguration:
                 try:
                     self.TX_POWER = int(options.tx)
                 except ValueError:
-                    print R + ' [!]' + O + ' invalid TX power leve: %s' % ( R + options.tx + W)
+                    print R + ' [!]' + O + ' invalid TX power level: %s' % ( R + options.tx + W)
                 except IndexError:
                     print R + ' [!]' + O + ' no TX power level given!' + W
                 else:
