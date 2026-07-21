@@ -627,7 +627,7 @@ class RunConfiguration:
         print ''
 
     def build_opt_parser(self):
-        """ Options are doubled for backwards compatability; will be removed soon and
+        """ Options are doubled for backwards compatibility; will be removed soon and
             fully moved to GNU-style
         """
         option_parser = argparse.ArgumentParser()
