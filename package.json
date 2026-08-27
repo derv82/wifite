@@ -1,0 +1,14 @@
+{
+  "name": "chatgpt-electron-app",
+  "version": "0.1.0",
+  "description": "Minimal Electron desktop app that calls the OpenAI API",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "electron": "^26.0.0"
+  }
+}

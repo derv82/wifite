@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>ChatGPT Electron</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data:;"></meta>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 16px; }
+    #messages { border: 1px solid #ccc; height: 400px; overflow:auto; padding:8px; }
+    .msg { margin-bottom: 8px; }
+    .user { color: #0b6; }
+    .assistant { color: #06b; }
+  </style>
+</head>
+<body>
+  <h2>ChatGPT (Electron)</h2>
+  <div id="messages"></div>
+  <textarea id="prompt" rows="4" style="width:100%" placeholder="Type your message..."></textarea>
+  <div style="margin-top:8px;"><button id="send">Send</button></div>
+  <script src="renderer.js"></script>
+</body>
+</html>
