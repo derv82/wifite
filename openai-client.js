@@ -1,14 +1,14 @@
-const fetch = globalThis.fetch || require('node-fetch');
+const fetchFn = globalThis.fetch ? globalThis.fetch.bind(globalThis) : require('node-fetch');
 
 async function queryOpenAI(prompt) {
   const key = process.env.OPENAI_API_KEY;
   if (!key) throw new Error('OPENAI_API_KEY environment variable is not set');
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetchFn('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${key}`
+      Authorization: `Bearer ${key}`
     },
     body: JSON.stringify({
       model: 'gpt-4o-mini',
@@ -23,8 +23,7 @@ async function queryOpenAI(prompt) {
   }
 
   const data = await res.json();
-  // Chat completions: choices[0].message.content
-  const msg = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || '';
+  const msg = data?.choices?.[0]?.message?.content || '';
   return msg.trim();
 }
 

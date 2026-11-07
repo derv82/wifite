@@ -9,6 +9,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "electron": "^26.0.0"
+    "electron": "^26.0.0",
+    "node-fetch": "^2.6.7"
   }
 }
